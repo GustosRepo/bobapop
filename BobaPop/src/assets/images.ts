@@ -26,11 +26,19 @@ export const IMAGES = {
     require('../../assets/gameassets/blockvar 4.png'),
   ] as const,
 
+  // Boss
+  boss: require('../../assets/gameassets/boss.png'),
+
+  // Effects
+  particleBoba: require('../../assets/gameassets/effects 3.png'),
+
   // HUD
   pauseBtn: require('../../assets/gameassets/iconsbtn 2.png'),
+  lifeIcon: require('../../assets/gameassets/lifeboba.png'),
 
   // Mascot expressions
-  mascotHappy:   require('../../assets/gameassets/varitaions 2.png'),
-  mascotSad:     require('../../assets/gameassets/varitaions 3.png'),
-  mascotExcited: require('../../assets/gameassets/varitaions 4.png'),
+  mascotHappy:   require('../../assets/gameassets/newboba 2.png'),  // gentle smile
+  mascotSad:     require('../../assets/gameassets/newboba 4.png'),  // sad with tear
+  mascotExcited: require('../../assets/gameassets/newboba 1.png'),  // star eyes
+  mascotVictory: require('../../assets/gameassets/newboba 3.png'),  // big laugh
 } as const;

@@ -45,10 +45,14 @@ export const HUD: React.FC<Props> = ({
           <Text style={[styles.score, { color: theme.ballColor }]}>{score.toLocaleString()}</Text>
         </View>
         <View style={styles.rightBlock}>
-          <Text style={styles.livesText}>{'🧋'.repeat(lives)}</Text>
-          <TouchableOpacity onPress={onPause} style={styles.pauseBtn}>
-            <Image source={IMAGES.pauseBtn} style={styles.pauseIcon} resizeMode="contain" />
-          </TouchableOpacity>
+          <View style={styles.livesRow}>
+            {Array.from({ length: lives }).map((_, i) => (
+              <Image key={i} source={IMAGES.lifeIcon} style={styles.lifeIcon} resizeMode="contain" />
+            ))}
+            <TouchableOpacity onPress={onPause} style={styles.pauseBtn}>
+              <Image source={IMAGES.pauseBtn} style={styles.pauseIcon} resizeMode="contain" />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -125,13 +129,19 @@ const styles = StyleSheet.create({
   },
   rightBlock: {
     alignItems: 'flex-end',
-    gap: 4,
   },
-  livesText: {
-    fontSize: 16,
+  livesRow: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+  },
+  lifeIcon: {
+    width: 28,
+    height: 28,
   },
   pauseBtn: {
-    padding: 4,
+    padding: 2,
+    marginLeft: 4,
   },
   pauseIcon: {
     width: 36,

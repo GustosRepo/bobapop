@@ -6,11 +6,13 @@ import {
   Dimensions,
   StatusBar,
   Text,
+  Image,
   TouchableOpacity,
   Modal,
   Platform,
   View,
 } from 'react-native';
+import { IMAGES } from '../assets/images';
 import { useGameLoop } from '../hooks/useGameLoop';
 import { GameCanvas } from '../components/GameCanvas';
 import { HUD } from '../components/HUD';
@@ -20,9 +22,10 @@ import { WORLDS } from '../constants/themes';
 
 interface Props {
   levelIndex: number;
-  onLevelComplete: (score: number, bricksPopped: number) => void;
+  onLevelComplete: (score: number, bricksPopped: number, lives: number) => void;
   onGameOver: (score: number) => void;
   onBack: () => void;
+  initialLives?: number;
 }
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('screen');
@@ -36,6 +39,7 @@ export const GameScreen: React.FC<Props> = ({
   onLevelComplete,
   onGameOver,
   onBack,
+  initialLives,
 }) => {
   const {
     gameState,
@@ -45,7 +49,7 @@ export const GameScreen: React.FC<Props> = ({
     resetLevel,
     pauseGame,
     resumeGame,
-  } = useGameLoop(levelIndex);
+  } = useGameLoop(levelIndex, initialLives);
 
   const level = LEVELS[levelIndex];
   const displayLevel = levelIndex + 1;
@@ -123,7 +127,7 @@ export const GameScreen: React.FC<Props> = ({
   // Handle win/loss transitions
   React.useEffect(() => {
     if (gameState.phase === 'won') {
-      const timer = setTimeout(() => onLevelComplete(gameState.score, gameState.bricksPopped), 800);
+      const timer = setTimeout(() => onLevelComplete(gameState.score, gameState.bricksPopped, gameState.lives), 800);
       return () => clearTimeout(timer);
     }
     if (gameState.phase === 'lost') {
@@ -152,8 +156,9 @@ export const GameScreen: React.FC<Props> = ({
         {/* Launch hint */}
         {gameState.phase === 'idle' && (
           <View style={styles.launchHint} pointerEvents="none">
-            <Text style={[styles.launchText, { color: worldTheme.ballColor }]}>
-              tap & drag to launch 🧋
+            <Image source={IMAGES.lifeIcon} style={styles.launchBoba} resizeMode="contain" />
+            <Text style={styles.launchText}>
+              tap & drag to launch
             </Text>
           </View>
         )}
@@ -236,16 +241,25 @@ const styles = StyleSheet.create({
   },
   launchHint: {
     position: 'absolute',
-    bottom: 120,
+    bottom: 140,
     left: 0,
     right: 0,
     alignItems: 'center',
+    gap: 12,
+  },
+  launchBoba: {
+    width: 52,
+    height: 52,
   },
   launchText: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '700',
     letterSpacing: 0.5,
-    opacity: 0.8,
+    color: '#FFFFFF',
+    opacity: 0.9,
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   overlay: {
     flex: 1,

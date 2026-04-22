@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // ─── Save format versioning ────────────────────────────────────────────────────
 //  Bump CURRENT_VERSION whenever SaveData gains new required fields.
 //  Add a migration case below so old saves are upgraded rather than wiped.
-const CURRENT_VERSION = 3;
+const CURRENT_VERSION = 5;
 const STORAGE_KEY = '@bobapop_save_v1';   // key never changes; version lives inside the JSON
 
 export interface SaveData {
@@ -14,6 +14,9 @@ export interface SaveData {
   levelHighScores: Record<number, number>; // levelIndex → best score
   totalBobas: number;                      // lifetime brick pop count
   seenWorlds: number[];                    // world indices whose intro has been shown
+  soundEnabled: boolean;
+  hapticsEnabled: boolean;
+  adsRemoved: boolean;
 }
 
 const DEFAULT_SAVE: SaveData = {
@@ -23,13 +26,16 @@ const DEFAULT_SAVE: SaveData = {
   levelHighScores: {},
   totalBobas: 0,
   seenWorlds: [],
+  soundEnabled: true,
+  hapticsEnabled: true,
+  adsRemoved: false,
 };
 
 // ─── Migration table ──────────────────────────────────────────────────────────
 // Each function receives the raw parsed object and returns a migrated SaveData.
 // Add one entry per version bump.
 function migrate(raw: Record<string, unknown>): SaveData {
-  let data = { ...raw } as SaveData;
+  let data = { ...raw } as unknown as SaveData;
 
   // v0 → v1: levelStars may be missing
   if (!data.version || data.version < 1) {
@@ -60,6 +66,16 @@ function migrate(raw: Record<string, unknown>): SaveData {
     data = { ...data, seenWorlds: [], version: 3 };
   }
 
+  // v3 → v4: add soundEnabled / hapticsEnabled
+  if (data.version < 4) {
+    data = { ...data, soundEnabled: true, hapticsEnabled: true, version: 4 };
+  }
+
+  // v4 → v5: add adsRemoved
+  if (data.version < 5) {
+    data = { ...data, adsRemoved: false, version: 5 };
+  }
+
   return data;
 }
 
@@ -71,8 +87,13 @@ interface UseSaveDataReturn {
   levelHighScores: Record<number, number>;
   totalBobas: number;
   seenWorlds: number[];
+  soundEnabled: boolean;
+  hapticsEnabled: boolean;
+  adsRemoved: boolean;
+  unlockAdsRemoved: () => void;
   recordLevelComplete: (levelIndex: number, stars: number, score: number, bricksPopped: number) => void;
   markWorldSeen: (worldIndex: number) => void;
+  updateSettings: (sound: boolean, haptics: boolean) => void;
 }
 
 export function useSaveData(devUnlockAll: boolean, totalLevels: number): UseSaveDataReturn {
@@ -136,8 +157,16 @@ export function useSaveData(devUnlockAll: boolean, totalLevels: number): UseSave
     persist({ ...prev, seenWorlds: [...prev.seenWorlds, worldIndex] });
   }, [persist]);
 
+  const updateSettings = useCallback((sound: boolean, haptics: boolean) => {
+    persist({ ...saveRef.current, soundEnabled: sound, hapticsEnabled: haptics });
+  }, [persist]);
+
+  const unlockAdsRemoved = useCallback(() => {
+    persist({ ...saveRef.current, adsRemoved: true });
+  }, [persist]);
+
   // ── Resolved values ─────────────────────────────────────────────────────────
   const unlockedUpTo = devUnlockAll ? totalLevels - 1 : save.unlockedUpTo;
 
-  return { loading, unlockedUpTo, levelStars: save.levelStars, levelHighScores: save.levelHighScores, totalBobas: save.totalBobas, seenWorlds: save.seenWorlds, recordLevelComplete, markWorldSeen };
+  return { loading, unlockedUpTo, levelStars: save.levelStars, levelHighScores: save.levelHighScores, totalBobas: save.totalBobas, seenWorlds: save.seenWorlds, soundEnabled: save.soundEnabled, hapticsEnabled: save.hapticsEnabled, adsRemoved: save.adsRemoved, recordLevelComplete, markWorldSeen, updateSettings, unlockAdsRemoved };
 }

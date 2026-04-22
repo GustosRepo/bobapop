@@ -14,7 +14,7 @@ import {
 } from '../constants/gameConfig';
 import { WORLDS } from '../constants/themes';
 import { LEVELS } from '../game/levels';
-import { useSound } from './useSound';
+import { useSound, _hapticsEnabled } from './useSound';
 
 function buildInitialBoss(level: LevelDef): BossBrick | undefined {
   if (!level.isBoss) return undefined;
@@ -32,7 +32,7 @@ function buildInitialBoss(level: LevelDef): BossBrick | undefined {
   };
 }
 
-function buildInitialState(levelIndex: number): GameState {
+function buildInitialState(levelIndex: number, initialLives = 3): GameState {
   const level = LEVELS[levelIndex];
   const worldTheme = WORLDS[level?.worldIndex ?? 0];
   const paddleWidth = level?.paddleWidth ?? 90;
@@ -45,7 +45,7 @@ function buildInitialState(levelIndex: number): GameState {
     particles: [],
     activePowerUps: [],
     score: 0,
-    lives: 3,
+    lives: initialLives,
     phase: 'idle',
     stickyCount: 3,
     bricksPopped: 0,
@@ -53,8 +53,8 @@ function buildInitialState(levelIndex: number): GameState {
   };
 }
 
-export function useGameLoop(levelIndex: number) {
-  const [gameState, setGameState] = useState<GameState>(() => buildInitialState(levelIndex));
+export function useGameLoop(levelIndex: number, initialLives = 3) {
+  const [gameState, setGameState] = useState<GameState>(() => buildInitialState(levelIndex, initialLives));
   const stateRef = useRef<GameState>(gameState);
   const rafRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
@@ -84,35 +84,35 @@ export function useGameLoop(levelIndex: number) {
       for (const event of next.hapticEvents) {
         switch (event) {
           case 'brick_hit':
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            if (_hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             playSound('brick_hit');
             break;
           case 'brick_destroy':
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            if (_hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             playSound('brick_destroy');
             break;
           case 'paddle_hit':
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            if (_hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             playSound('paddle_hit');
             break;
           case 'boss_hit':
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            if (_hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             playSound('boss_hit');
             break;
           case 'boss_defeat':
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+            if (_hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
             playSound('boss_defeat');
             break;
           case 'life_lost':
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            if (_hapticsEnabled) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             playSound('life_lost');
             break;
           case 'game_won':
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            if (_hapticsEnabled) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             playSound('game_won');
             break;
           case 'game_lost':
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            if (_hapticsEnabled) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
             playSound('game_lost');
             break;
         }

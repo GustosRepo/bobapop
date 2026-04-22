@@ -16,6 +16,8 @@ interface Props {
   score: number;
   levelNumber: number;
   theme: WorldTheme;
+  adsRemoved: boolean;
+  onContinue: () => void;
   onRetry: () => void;
   onMenu: () => void;
 }
@@ -26,6 +28,8 @@ export const GameOverScreen: React.FC<Props> = ({
   score,
   levelNumber,
   theme,
+  adsRemoved,
+  onContinue,
   onRetry,
   onMenu,
 }) => {
@@ -45,6 +49,19 @@ export const GameOverScreen: React.FC<Props> = ({
         </View>
 
         <View style={styles.buttons}>
+          {!adsRemoved && (
+            <TouchableOpacity
+              style={styles.continueBtn}
+              onPress={onContinue}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.continueBtnIcon}>▶</Text>
+              <View>
+                <Text style={styles.continueBtnTitle}>Continue</Text>
+                <Text style={styles.continueBtnSub}>Watch a short ad for +2 lives</Text>
+              </View>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={[styles.btn, { backgroundColor: theme.paddleColor }]}
             onPress={onRetry}
@@ -115,6 +132,30 @@ const styles = StyleSheet.create({
     width: '100%',
     gap: 12,
     marginTop: 8,
+  },
+  continueBtn: {
+    width: '100%',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+    backgroundColor: '#F5A623',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  continueBtnIcon: {
+    fontSize: 24,
+    color: '#fff',
+  },
+  continueBtnTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  continueBtnSub: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 1,
   },
   btn: {
     width: '100%',

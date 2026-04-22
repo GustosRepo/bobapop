@@ -1,0 +1,18 @@
+node_modules/
+
+# Expo and React Native generated output
+.expo/
+dist/
+web-build/
+ios/build/
+android/build/
+
+# Logs and local machine files
+*.log
+.DS_Store
+
+# Local env files
+.env*.local
+
+# TypeScript
+*.tsbuildinfo

@@ -224,18 +224,18 @@ export const GameCanvas: React.FC<Props> = ({ state, theme, width, height, scale
       {state.particles.map((p) => {
         const size = p.radius * 2 * scaleX;
         return (
-          <View
+          <Image
             key={p.id}
+            source={IMAGES.particleBoba}
             style={{
               position: 'absolute',
               left: (p.x - p.radius) * scaleX,
               top: (p.y - p.radius) * scaleY,
               width: size,
               height: size,
-              borderRadius: size / 2,
-              backgroundColor: p.color,
               opacity: p.alpha,
             }}
+            resizeMode="contain"
           />
         );
       })}
@@ -256,29 +256,15 @@ export const GameCanvas: React.FC<Props> = ({ state, theme, width, height, scale
                 width: b.width * scaleX,
                 height: b.height * scaleY,
                 opacity: bossOpacity,
-                borderColor: b.enraged ? '#FF4444' : theme.accentColor,
-                shadowColor: b.enraged ? '#FF4444' : theme.accentColor,
               },
             ]}
           >
-            {/* Stretched blockvar 4 (toughest art) */}
+            {/* Boss image */}
             <Image
-              source={IMAGES.blocks[3]}
+              source={IMAGES.boss}
               style={{ width: b.width * scaleX, height: b.height * scaleY }}
-              resizeMode="stretch"
+              resizeMode="contain"
             />
-            {/* HP pip row */}
-            <View style={styles.bossPips}>
-              {Array.from({ length: b.maxHp }).map((_, i) => (
-                <View
-                  key={i}
-                  style={[
-                    styles.bossPip,
-                    { backgroundColor: i < b.hp ? (b.enraged ? '#FF4444' : theme.accentColor) : 'rgba(0,0,0,0.3)' },
-                  ]}
-                />
-              ))}
-            </View>
             {/* Enrage flash + continuous pulse overlay */}
             {(() => {
               const ENRAGE_FLASH_MS = 500;
@@ -292,7 +278,6 @@ export const GameCanvas: React.FC<Props> = ({ state, theme, width, height, scale
                   style={[
                     StyleSheet.absoluteFill,
                     {
-                      borderRadius: 10,
                       backgroundColor: '#FF3030',
                       opacity: enrageFlashActive ? 0.55 : enragePulseAlpha,
                     },
@@ -347,27 +332,7 @@ const styles = StyleSheet.create({
   },
   bossContainer: {
     position: 'absolute',
-    borderRadius: 12,
-    borderWidth: 2.5,
-    overflow: 'hidden',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.9,
-    shadowRadius: 12,
-    elevation: 10,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  bossPips: {
-    position: 'absolute',
-    bottom: 4,
-    flexDirection: 'row',
-    gap: 3,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bossPip: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
   },
 });

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { View, StyleSheet, Dimensions, StatusBar, Text, Image, Animated } from 'react-native';
 import { GameScreen } from './src/screens/GameScreen';
 import { LevelSelectScreen } from './src/screens/LevelSelectScreen';
@@ -9,6 +9,12 @@ import { LEVELS } from './src/game/levels';
 import { useSaveData } from './src/hooks/useSaveData';
 import { IMAGES } from './src/assets/images';
 import { WorldIntroModal } from './src/components/WorldIntroModal';
+import { preloadSounds } from './src/hooks/useSound';
+import { setSoundEnabled, setHapticsEnabled } from './src/hooks/useSound';
+import { preloadMusic, playMusic, setMusicEnabled } from './src/hooks/useMusic';
+import { AppState, AppStateStatus } from 'react-native';
+import { pauseMusic, resumeMusic } from './src/hooks/useMusic';
+import { useRewardedAd } from './src/hooks/useRewardedAd';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('screen');
 
@@ -18,14 +24,14 @@ const DEV_UNLOCK_ALL = true; // set to false before shipping
 
 type Screen =
   | { name: 'select' }
-  | { name: 'game'; levelIndex: number }
+  | { name: 'game'; levelIndex: number; initialLives?: number }
   | { name: 'complete'; score: number; stars: number; levelIndex: number }
   | { name: 'over'; score: number; levelIndex: number };
 
-/** Score thresholds for star awards */
-function scoreToStars(score: number): number {
-  if (score >= 1500) return 3;
-  if (score >= 600)  return 2;
+/** Stars based on lives remaining — standard for casual arcade games */
+function livesToStars(lives: number): number {
+  if (lives >= 3) return 3;
+  if (lives >= 2) return 2;
   return 1;
 }
 
@@ -36,10 +42,46 @@ export default function App() {
     setWorldIntro,
   ] = useState<{ worldIndex: number; levelIndex: number } | null>(null);
 
+  useEffect(() => {
+    preloadSounds().catch(() => {});
+    preloadMusic().catch(() => {});
+  }, []);
+
+  // ── App background / foreground — pause music when backgrounded ────────────
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
+      if (state === 'active') resumeMusic();
+      else pauseMusic();
+    });
+    return () => sub.remove();
+  }, []);
+
   const {
     loading, unlockedUpTo, levelStars, levelHighScores, totalBobas,
-    seenWorlds, recordLevelComplete, markWorldSeen,
+    seenWorlds, soundEnabled, hapticsEnabled, adsRemoved,
+    recordLevelComplete, markWorldSeen, updateSettings, unlockAdsRemoved,
   } = useSaveData(DEV_UNLOCK_ALL, LEVELS.length);
+
+  const { showAd } = useRewardedAd();
+
+  useEffect(() => {
+    setSoundEnabled(soundEnabled);
+    setHapticsEnabled(hapticsEnabled);
+    setMusicEnabled(soundEnabled);
+  }, [soundEnabled, hapticsEnabled]);
+
+  // ── Music — react to screen changes ────────────────────────────────────────
+  useEffect(() => {
+    if (screen.name === 'select') {
+      playMusic('menu');
+    } else if (screen.name === 'game') {
+      const isBoss = LEVELS[screen.levelIndex]?.isBoss ?? false;
+      playMusic(isBoss ? 'boss' : 'game');
+    } else if (screen.name === 'over') {
+      playMusic('gameover');
+    }
+    // 'complete' keeps whatever track was playing
+  }, [screen]);
 
   // ── Screen fade transition ──────────────────────────────────────────────────────
   const screenOpacity = useRef(new Animated.Value(1)).current;
@@ -69,10 +111,10 @@ export default function App() {
   }, [worldIntro, markWorldSeen, navigateTo]);
 
   const handleLevelComplete = useCallback(
-    (score: number, bricksPopped: number) => {
+    (score: number, bricksPopped: number, lives: number) => {
       if (screen.name !== 'game') return;
       const idx = screen.levelIndex;
-      const earned = scoreToStars(score);
+      const earned = livesToStars(lives);
       recordLevelComplete(idx, earned, score, bricksPopped);
       navigateTo({ name: 'complete', score, stars: earned, levelIndex: idx });
     },
@@ -86,6 +128,14 @@ export default function App() {
     },
     [screen, navigateTo],
   );
+
+  const handleContinue = useCallback(() => {
+    if (screen.name !== 'over') return;
+    const levelIndex = screen.levelIndex;
+    showAd(() => {
+      navigateTo({ name: 'game', levelIndex, initialLives: 2 });
+    });
+  }, [screen, showAd, navigateTo]);
 
   // ── Loading splash ──────────────────────────────────────────────────────
   if (loading) {
@@ -111,7 +161,10 @@ export default function App() {
           levelStars={levelStars}
           levelHighScores={levelHighScores}
           totalBobas={totalBobas}
+          soundEnabled={soundEnabled}
+          hapticsEnabled={hapticsEnabled}
           onSelectLevel={handleSelectLevel}
+          onUpdateSettings={updateSettings}
         />
       </>
     );
@@ -121,6 +174,7 @@ export default function App() {
         <StatusBar hidden translucent backgroundColor="transparent" />
         <GameScreen
           levelIndex={screen.levelIndex}
+          initialLives={screen.initialLives}
           onLevelComplete={handleLevelComplete}
           onGameOver={handleGameOver}
           onBack={() => navigateTo({ name: 'select' })}
@@ -158,6 +212,8 @@ export default function App() {
           score={score}
           levelNumber={levelIndex + 1}
           theme={worldTheme}
+          adsRemoved={adsRemoved}
+          onContinue={handleContinue}
           onRetry={() => navigateTo({ name: 'game', levelIndex })}
           onMenu={() => navigateTo({ name: 'select' })}
         />

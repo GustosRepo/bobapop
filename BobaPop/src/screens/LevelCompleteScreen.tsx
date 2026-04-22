@@ -70,7 +70,13 @@ export const LevelCompleteScreen: React.FC<Props> = ({
       <StatusBar hidden />
       <View style={styles.content}>
         <Image
-          source={isWorldBoss ? IMAGES.mascotExcited : IMAGES.mascotHappy}
+          source={
+            stars === 3
+              ? IMAGES.mascotVictory  // Big laugh for perfect clear
+              : isWorldBoss
+              ? IMAGES.mascotExcited  // Star eyes for boss defeat
+              : IMAGES.mascotHappy    // Gentle smile otherwise
+          }
           style={styles.mascot}
           resizeMode="contain"
         />
@@ -229,9 +235,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginVertical: 4,
-  },
-  bigStar: {
-    fontSize: 52,
   },
   bigStar: {
     fontSize: 52,
