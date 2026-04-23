@@ -41,7 +41,7 @@ export const LevelCompleteScreen: React.FC<Props> = ({
   const title = isLast
     ? 'All Worlds Cleared!'
     : isWorldBoss
-    ? '⭐ World Cleared! ⭐'
+    ? 'World Cleared!'
     : 'Level Complete!';
 
   // ── Star pop-in animation ───────────────────────────────────────────────
@@ -82,9 +82,10 @@ export const LevelCompleteScreen: React.FC<Props> = ({
         />
         <Text style={[styles.title, { color: theme.ballColor }]}>{title}</Text>
         {isWorldBoss && (
-          <Text style={[styles.bossTag, { backgroundColor: theme.accentColor + '33', borderColor: theme.accentColor }]}>
-            👾 Boss Defeated!
-          </Text>
+          <View style={[styles.bossTag, { backgroundColor: theme.accentColor + '33', borderColor: theme.accentColor }]}>
+            <Image source={IMAGES.boss} style={styles.bossTagIcon} resizeMode="contain" />
+            <Text style={styles.bossTagText}>Boss Defeated!</Text>
+          </View>
         )}
         <Text style={[styles.levelText, { color: theme.accentColor }]}>
           Level {levelNumber}
@@ -240,14 +241,23 @@ const styles = StyleSheet.create({
     fontSize: 52,
   },
   bossTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     borderWidth: 1.5,
     borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  bossTagIcon: {
+    width: 22,
+    height: 22,
+  },
+  bossTagText: {
     fontSize: 14,
     fontWeight: '700',
     color: '#fff',
-    overflow: 'hidden',
-    marginBottom: 4,
   },
 });

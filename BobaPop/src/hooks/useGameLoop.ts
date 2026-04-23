@@ -188,9 +188,9 @@ export function useGameLoop(levelIndex: number, initialLives = 3) {
 
   const resetLevel = useCallback(() => {
     stopLoop();
-    const fresh = buildInitialState(levelIndex);
+    const fresh = buildInitialState(levelIndex, initialLives);
     syncState(fresh);
-  }, [levelIndex, syncState, stopLoop]);
+  }, [initialLives, levelIndex, syncState, stopLoop]);
 
   const pauseGame = useCallback(() => {
     if (stateRef.current.phase !== 'playing') return;
@@ -207,10 +207,10 @@ export function useGameLoop(levelIndex: number, initialLives = 3) {
   }, [startLoop, syncState]);
 
   useEffect(() => {
-    const fresh = buildInitialState(levelIndex);
+    const fresh = buildInitialState(levelIndex, initialLives);
     syncState(fresh);
     return () => stopLoop();
-  }, [levelIndex]);
+  }, [initialLives, levelIndex]);
 
   return {
     gameState,

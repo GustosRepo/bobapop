@@ -3,42 +3,56 @@
 export const IMAGES = {
   // World backgrounds (index 0–3 matches WORLDS array order)
   backgrounds: [
-    require('../../assets/gameassets/bobabg 1.png'),
-    require('../../assets/gameassets/bobabg 2.png'),
-    require('../../assets/gameassets/bobabg 3.png'),
-    require('../../assets/gameassets/bobabg 4.png'),
+    require('../../assets/gameassets/boba-bg-1.png'),
+    require('../../assets/gameassets/boba-bg-2.png'),
+    require('../../assets/gameassets/boba-bg-3.png'),
+    require('../../assets/gameassets/boba-bg-4.png'),
   ] as const,
 
   // Paddle states
-  paddle:       require('../../assets/gameassets/varpaddke 1.png'),
-  paddleSticky: require('../../assets/gameassets/carpaddle 2.png'),
-  paddleWide:   require('../../assets/gameassets/carpaddle 3.png'),
-  paddleSlow:   require('../../assets/gameassets/carpaddle 1.png'),
+  paddle:       require('../../assets/gameassets/paddle-default.png'),
+  paddleSticky: require('../../assets/gameassets/car-paddle-2.png'),
+  paddleWide:   require('../../assets/gameassets/car-paddle-3.png'),
+  paddleSlow:   require('../../assets/gameassets/car-paddle-1.png'),
 
   // Game ball
-  ball: require('../../assets/gameassets/bobaball 1.png'),
+  ball: require('../../assets/gameassets/boba-ball.png'),
+  ballHit: require('../../assets/gameassets/boba-ball-hit.png'),
+  ballHot: require('../../assets/gameassets/boba-ball-hot.png'),
+  ballMulti: require('../../assets/gameassets/boba-ball-multi.png'),
 
   // Bricks by HP — index 0 = 1 HP, index 3 = 4 HP
   blocks: [
-    require('../../assets/gameassets/blockvar 1.png'),
-    require('../../assets/gameassets/blockvar 2.png'),
-    require('../../assets/gameassets/blockvar 3.png'),
-    require('../../assets/gameassets/blockvar 4.png'),
+    require('../../assets/gameassets/blockvar-1.png'),
+    require('../../assets/gameassets/blockvar-2.png'),
+    require('../../assets/gameassets/blockvar-3.png'),
+    require('../../assets/gameassets/blockvar-4.png'),
   ] as const,
 
   // Boss
   boss: require('../../assets/gameassets/boss.png'),
 
   // Effects
-  particleBoba: require('../../assets/gameassets/effects 3.png'),
+  effectSplash: require('../../assets/gameassets/effect-splash.png'),
+  effectBurst: require('../../assets/gameassets/effect-burst.png'),
+  particleBoba: require('../../assets/gameassets/effect-boba.png'),
 
   // HUD
-  pauseBtn: require('../../assets/gameassets/iconsbtn 2.png'),
+  settingsBtn: require('../../assets/gameassets/settings-button.png'),
+  pauseBtn: require('../../assets/gameassets/pause-button.png'),
   lifeIcon: require('../../assets/gameassets/lifeboba.png'),
 
+  // World flavor art
+  worldMascots: [
+    require('../../assets/gameassets/world-brown-sugar.png'),
+    require('../../assets/gameassets/world-matcha.png'),
+    require('../../assets/gameassets/world-taro.png'),
+    require('../../assets/gameassets/world-thai-tea.png'),
+  ] as const,
+
   // Mascot expressions
-  mascotHappy:   require('../../assets/gameassets/newboba 2.png'),  // gentle smile
-  mascotSad:     require('../../assets/gameassets/newboba 4.png'),  // sad with tear
-  mascotExcited: require('../../assets/gameassets/newboba 1.png'),  // star eyes
-  mascotVictory: require('../../assets/gameassets/newboba 3.png'),  // big laugh
+  mascotHappy:   require('../../assets/gameassets/mascot-happy.png'),
+  mascotSad:     require('../../assets/gameassets/mascot-sad.png'),
+  mascotExcited: require('../../assets/gameassets/mascot-excited.png'),
+  mascotVictory: require('../../assets/gameassets/mascot-victory.png'),
 } as const;

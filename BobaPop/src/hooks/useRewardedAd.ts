@@ -10,6 +10,7 @@ const REWARDED_UNIT_ID = __DEV__
   : 'ca-app-pub-8863066373093222/9842491767';
 
 const REQUEST_OPTIONS = { requestNonPersonalizedAdsOnly: true };
+export type RewardedAdResult = 'watched' | 'not_available' | 'skipped' | 'closed' | 'error';
 
 export function useRewardedAd() {
   const { isLoaded, isEarnedReward, isClosed, load, show } = useAdMobRewardedAd(
@@ -28,31 +29,49 @@ export function useRewardedAd() {
   }, [isClosed, load]);
 
   // Pending reward callback — fired when isEarnedReward flips true
-  const pendingReward = useRef<(() => void) | null>(null);
+  const pendingReward = useRef<((result: RewardedAdResult) => void) | null>(null);
+  const rewardEarnedRef = useRef(false);
 
   useEffect(() => {
     if (isEarnedReward && pendingReward.current) {
-      pendingReward.current();
+      rewardEarnedRef.current = true;
+      pendingReward.current('watched');
       pendingReward.current = null;
     }
   }, [isEarnedReward]);
 
+  useEffect(() => {
+    if (!isClosed) return;
+    if (!rewardEarnedRef.current && pendingReward.current) {
+      pendingReward.current('closed');
+      pendingReward.current = null;
+    }
+    rewardEarnedRef.current = false;
+  }, [isClosed]);
+
   /**
-   * Show the rewarded ad. If the ad isn't ready, grants the reward immediately
-   * rather than punishing the player for a network failure.
+   * Show the rewarded ad. Rewards are granted only after the ad SDK reports
+   * an earned reward.
    */
   const showAd = useCallback(
-    (onRewarded: () => void) => {
+    (onResult: (result: RewardedAdResult) => void) => {
       if (!isLoaded) {
-        onRewarded();
+        onResult('not_available');
+        load();
         return;
       }
-      pendingReward.current = onRewarded;
-      show();
+      pendingReward.current = onResult;
+      rewardEarnedRef.current = false;
+      try {
+        show();
+      } catch {
+        pendingReward.current = null;
+        onResult('error');
+        load();
+      }
     },
-    [isLoaded, show],
+    [isLoaded, load, show],
   );
 
   return { isLoaded, showAd };
 }
-

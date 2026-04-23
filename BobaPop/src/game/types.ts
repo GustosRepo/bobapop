@@ -19,6 +19,7 @@ export interface Ball {
   vy: number;
   active: boolean;
   sticky: boolean;   // stuck to paddle waiting for launch
+  variant?: 'default' | 'hit' | 'hot' | 'multi';
   stickyOffsetX?: number;
 }
 
@@ -37,6 +38,7 @@ export interface Particle {
   color: string;
   alpha: number;
   born: number;
+  kind?: 'boba' | 'splash' | 'burst';
 }
 
 export interface ActivePowerUp {

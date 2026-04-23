@@ -61,6 +61,7 @@ export function spawnParticles(
   y: number,
   colors: string[],
   count = PARTICLE_COUNT,
+  kind: Particle['kind'] = 'boba',
 ): Particle[] {
   const now = Date.now();
   return Array.from({ length: count }, () => {
@@ -76,6 +77,7 @@ export function spawnParticles(
       color: colors[Math.floor(Math.random() * colors.length)],
       alpha: 1,
       born: now,
+      kind,
     };
   });
 }
@@ -210,7 +212,7 @@ export function physicsStep(
           bricksPoppedThisFrame++;
           hapticSet.add('brick_destroy');
           newParticles.push(
-            ...spawnParticles(brickCenterX, brickCenterY, particleColors),
+            ...spawnParticles(brickCenterX, brickCenterY, particleColors, PARTICLE_COUNT, 'splash'),
           );
 
           // drop power-up
@@ -221,7 +223,7 @@ export function physicsStep(
           newBricks[i] = { ...brick, hp: newHp };
           hapticSet.add('brick_hit');
           newParticles.push(
-            ...spawnParticles(brickCenterX, brickCenterY, particleColors, 4),
+            ...spawnParticles(brickCenterX, brickCenterY, particleColors, 4, 'boba'),
           );
         }
 
@@ -245,7 +247,7 @@ export function physicsStep(
         boss.hp -= 1;
         hapticSet.add('boss_hit');
         newParticles.push(
-          ...spawnParticles(bx + bw / 2, by + bh / 2, particleColors, 6),
+          ...spawnParticles(bx + bw / 2, by + bh / 2, particleColors, 6, 'burst'),
         );
         if (boss.hp <= 0) {
           boss.defeated = true;
@@ -253,7 +255,7 @@ export function physicsStep(
           scoreGain += boss.maxHp * 50;
           // Mega burst on defeat
           newParticles.push(
-            ...spawnParticles(bx + bw / 2, by + bh / 2, particleColors, 30),
+            ...spawnParticles(bx + bw / 2, by + bh / 2, particleColors, 30, 'burst'),
           );
         }
         if (Math.abs(dx) > Math.abs(dy)) {
@@ -358,6 +360,7 @@ function applyPowerUp(
   switch (type) {
     case 'multi_ball': {
       const speed = Math.sqrt(vx * vx + vy * vy);
+      pushOrRefresh(activePowerUps, 'multi_ball', now + 1500);
       newBalls.push({
         id: uid(),
         x: sourceBall.x,
@@ -366,6 +369,7 @@ function applyPowerUp(
         vy: -speed * Math.cos(Math.PI / 6),
         active: true,
         sticky: false,
+        variant: 'multi',
       });
       newBalls.push({
         id: uid(),
@@ -375,6 +379,7 @@ function applyPowerUp(
         vy: -speed * Math.cos(Math.PI / 6),
         active: true,
         sticky: false,
+        variant: 'multi',
       });
       break;
     }
@@ -410,6 +415,7 @@ export function makeInitialBall(paddleX: number, paddleWidth: number, speed = 7)
     vy: -speed,
     active: true,
     sticky: true,
+    variant: 'default',
     stickyOffsetX: paddleWidth / 2,
   };
 }
@@ -423,6 +429,7 @@ export function makeStickyBall(paddle: { x: number; width: number }): Ball {
     vy: -7,
     active: true,
     sticky: true,
+    variant: 'default',
     stickyOffsetX: paddle.width / 2,
   };
 }

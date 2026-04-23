@@ -8,24 +8,31 @@ import {
   Animated,
   Switch,
   Linking,
+  Image,
+  ImageSourcePropType,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
+import { IMAGES } from '../assets/images';
 
 interface Props {
   visible: boolean;
   soundEnabled: boolean;
   hapticsEnabled: boolean;
+  plusActive: boolean;
   onClose: () => void;
   onUpdateSettings: (sound: boolean, haptics: boolean) => void;
+  onOpenPlus: () => void;
 }
 
 export const SettingsModal: React.FC<Props> = ({
   visible,
   soundEnabled,
   hapticsEnabled,
+  plusActive,
   onClose,
   onUpdateSettings,
+  onOpenPlus,
 }) => {
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
@@ -73,16 +80,23 @@ export const SettingsModal: React.FC<Props> = ({
 
             {/* ── Toggles ── */}
             <View style={styles.section}>
+              <SettingsActionRow
+                label={plusActive ? 'BobaPop Plus Active' : 'BobaPop Plus'}
+                detail={plusActive ? 'Ad-free continues enabled' : 'Ad-free continues and no waits'}
+                icon={IMAGES.mascotHappy}
+                onPress={onOpenPlus}
+              />
+              <View style={styles.divider} />
               <SettingsRow
                 label="Sound Effects"
-                emoji="🔊"
+                icon={IMAGES.effectBurst}
                 value={soundEnabled}
                 onToggle={toggleSound}
               />
               <View style={styles.divider} />
               <SettingsRow
                 label="Haptics"
-                emoji="📳"
+                icon={IMAGES.particleBoba}
                 value={hapticsEnabled}
                 onToggle={toggleHaptics}
               />
@@ -96,7 +110,7 @@ export const SettingsModal: React.FC<Props> = ({
                 onPress={() => Linking.openURL('https://codewerx.com')}
                 activeOpacity={0.7}
               >
-                <Text style={styles.creditText}>Made with ☕ by CODEWERX LLC</Text>
+                <Text style={styles.creditText}>Made by CODEWERX LLC</Text>
                 <Text style={styles.creditArrow}>›</Text>
               </TouchableOpacity>
               <View style={styles.divider} />
@@ -131,14 +145,14 @@ export const SettingsModal: React.FC<Props> = ({
 
 interface RowProps {
   label: string;
-  emoji: string;
+  icon: ImageSourcePropType;
   value: boolean;
   onToggle: () => void;
 }
 
-const SettingsRow: React.FC<RowProps> = ({ label, emoji, value, onToggle }) => (
+const SettingsRow: React.FC<RowProps> = ({ label, icon, value, onToggle }) => (
   <View style={styles.row}>
-    <Text style={styles.rowEmoji}>{emoji}</Text>
+    <Image source={icon} style={styles.rowIcon} resizeMode="contain" />
     <Text style={styles.rowLabel}>{label}</Text>
     <Switch
       value={value}
@@ -148,6 +162,24 @@ const SettingsRow: React.FC<RowProps> = ({ label, emoji, value, onToggle }) => (
       ios_backgroundColor="#D4BFA0"
     />
   </View>
+);
+
+interface ActionRowProps {
+  label: string;
+  detail: string;
+  icon: ImageSourcePropType;
+  onPress: () => void;
+}
+
+const SettingsActionRow: React.FC<ActionRowProps> = ({ label, detail, icon, onPress }) => (
+  <TouchableOpacity style={[styles.row, styles.actionRow]} onPress={onPress} activeOpacity={0.78}>
+    <Image source={icon} style={styles.actionIcon} resizeMode="contain" />
+    <View style={styles.actionTextWrap}>
+      <Text style={styles.actionLabel}>{label}</Text>
+      <Text style={styles.actionDetail}>{detail}</Text>
+    </View>
+    <Text style={styles.creditArrow}>›</Text>
+  </TouchableOpacity>
 );
 
 const styles = StyleSheet.create({
@@ -205,14 +237,40 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     gap: 14,
   },
-  rowEmoji: {
-    fontSize: 22,
+  rowIcon: {
+    width: 24,
+    height: 24,
   },
   rowLabel: {
     flex: 1,
     fontSize: 17,
     fontWeight: '600',
     color: '#3B1A08',
+  },
+  actionRow: {
+    minHeight: 76,
+    paddingVertical: 16,
+  },
+  actionIcon: {
+    width: 36,
+    height: 36,
+  },
+  actionTextWrap: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  actionLabel: {
+    color: '#3B1A08',
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '800',
+  },
+  actionDetail: {
+    color: '#8B6030',
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700',
+    marginTop: 2,
   },
   divider: {
     height: 1,

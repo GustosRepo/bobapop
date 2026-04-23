@@ -15,11 +15,11 @@ interface Props {
   onPause: () => void;
 }
 
-const POWERUP_ICONS: Record<string, string> = {
-  multi_ball: '⚪⚪',
-  wide_paddle: '━━━',
-  sticky_paddle: '🍯',
-  slow_motion: '🐢',
+const POWERUP_IMAGES = {
+  multi_ball: IMAGES.ballMulti,
+  wide_paddle: IMAGES.paddleWide,
+  sticky_paddle: IMAGES.paddleSticky,
+  slow_motion: IMAGES.ballHot,
 };
 
 export const HUD: React.FC<Props> = ({
@@ -61,7 +61,7 @@ export const HUD: React.FC<Props> = ({
         <View style={styles.bossBarWrapper}>
           <View style={styles.bossBarRow}>
             <Text style={[styles.bossLabel, { color: boss.enraged ? '#FF4444' : '#FF8C69' }]}>
-              {boss.enraged ? '💢 ENRAGED' : '👾 BOSS'}
+              {boss.enraged ? 'ENRAGED' : 'BOSS'}
             </Text>
             <Text style={[styles.bossHpText, { color: boss.enraged ? '#FF4444' : '#FF8C69' }]}>
               {boss.hp}/{boss.maxHp}
@@ -88,7 +88,7 @@ export const HUD: React.FC<Props> = ({
         {activePowerUps.map((p) => {
           return (
             <View key={p.type} style={[styles.powerUpTag, { borderColor: theme.accentColor }]}>
-              <Text style={styles.powerUpIcon}>{POWERUP_ICONS[p.type] ?? '✨'}</Text>
+              <Image source={POWERUP_IMAGES[p.type]} style={styles.powerUpIcon} resizeMode="contain" />
             </View>
           );
         })}
@@ -157,12 +157,14 @@ const styles = StyleSheet.create({
   powerUpTag: {
     borderWidth: 1,
     borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    width: 42,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   powerUpIcon: {
-    fontSize: 12,
-    color: '#fff',
+    width: 32,
+    height: 18,
   },
   bossBarWrapper: {
     marginTop: 6,

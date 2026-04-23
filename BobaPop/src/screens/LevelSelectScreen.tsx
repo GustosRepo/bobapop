@@ -27,25 +27,27 @@ interface Props {
   totalBobas: number;
   soundEnabled: boolean;
   hapticsEnabled: boolean;
+  plusActive: boolean;
   onSelectLevel: (index: number) => void;
   onUpdateSettings: (sound: boolean, haptics: boolean) => void;
+  onOpenPlus: () => void;
 }
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
 // Player level calculation based on total stars
-function calculatePlayerLevel(totalStars: number): { level: number; title: string; emoji: string } {
-  if (totalStars >= 60) return { level: 10, title: 'Boba Master', emoji: '👑' };
-  if (totalStars >= 54) return { level: 9, title: 'Boba Legend', emoji: '💎' };
-  if (totalStars >= 48) return { level: 8, title: 'Boba Expert', emoji: '🏆' };
-  if (totalStars >= 42) return { level: 7, title: 'Boba Pro', emoji: '⭐' };
-  if (totalStars >= 36) return { level: 6, title: 'Boba Ace', emoji: '🎯' };
-  if (totalStars >= 30) return { level: 5, title: 'Boba Adept', emoji: '🔥' };
-  if (totalStars >= 24) return { level: 4, title: 'Boba Slurper', emoji: '🧋' };
-  if (totalStars >= 18) return { level: 3, title: 'Boba Fan', emoji: '💫' };
-  if (totalStars >= 12) return { level: 2, title: 'Boba Novice', emoji: '✨' };
-  if (totalStars >= 6) return { level: 1, title: 'Boba Beginner', emoji: '🌟' };
-  return { level: 0, title: 'New Popper', emoji: '🎈' };
+function calculatePlayerLevel(totalStars: number): { level: number; title: string } {
+  if (totalStars >= 60) return { level: 10, title: 'Boba Master' };
+  if (totalStars >= 54) return { level: 9, title: 'Boba Legend' };
+  if (totalStars >= 48) return { level: 8, title: 'Boba Expert' };
+  if (totalStars >= 42) return { level: 7, title: 'Boba Pro' };
+  if (totalStars >= 36) return { level: 6, title: 'Boba Ace' };
+  if (totalStars >= 30) return { level: 5, title: 'Boba Adept' };
+  if (totalStars >= 24) return { level: 4, title: 'Boba Slurper' };
+  if (totalStars >= 18) return { level: 3, title: 'Boba Fan' };
+  if (totalStars >= 12) return { level: 2, title: 'Boba Novice' };
+  if (totalStars >= 6) return { level: 1, title: 'Boba Beginner' };
+  return { level: 0, title: 'New Popper' };
 }
 
 export const LevelSelectScreen: React.FC<Props> = ({
@@ -55,12 +57,15 @@ export const LevelSelectScreen: React.FC<Props> = ({
   totalBobas,
   soundEnabled,
   hapticsEnabled,
+  plusActive,
   onSelectLevel,
   onUpdateSettings,
+  onOpenPlus,
 }) => {
   const { playSound } = useSound();
   const [settingsVisible, setSettingsVisible] = useState(false);
   const mascotAnim = useRef(new Animated.Value(0)).current;
+  const starShimmerAnim = useRef(new Animated.Value(0)).current;
   const worldAnims = useRef(WORLDS.map(() => new Animated.Value(0))).current;
 
   // Calculate player level
@@ -92,9 +97,33 @@ export const LevelSelectScreen: React.FC<Props> = ({
     ).start();
   }, []);
 
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(starShimmerAnim, {
+        toValue: 1,
+        duration: 2200,
+        useNativeDriver: true,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [starShimmerAnim]);
+
   const mascotScale = mascotAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [0.7, 1],
+  });
+  const starShimmerRotate = starShimmerAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+  const starShimmerScale = starShimmerAnim.interpolate({
+    inputRange: [0, 0.45, 1],
+    outputRange: [0.94, 1.08, 0.94],
+  });
+  const starShimmerOpacity = starShimmerAnim.interpolate({
+    inputRange: [0, 0.2, 0.65, 1],
+    outputRange: [0.25, 0.9, 0.55, 0.25],
   });
 
   // Find the next level to play
@@ -118,7 +147,7 @@ export const LevelSelectScreen: React.FC<Props> = ({
       resizeMode="cover"
     >
       <LinearGradient
-        colors={['rgba(232,212,184,0.88)', 'rgba(212,184,150,0.92)', 'rgba(201,169,118,0.90)']}
+        colors={['rgba(232,212,184,0.56)', 'rgba(212,184,150,0.64)', 'rgba(201,169,118,0.60)']}
         style={StyleSheet.absoluteFill}
       />
       <FloatingBobas />
@@ -137,6 +166,7 @@ export const LevelSelectScreen: React.FC<Props> = ({
             end={{ x: 0, y: 1 }}
             style={StyleSheet.absoluteFill}
           />
+          <Image source={IMAGES.effectBurst} style={styles.badgeGlow} resizeMode="cover" />
           <Text style={styles.badgeLevel}>{playerLevel.level}</Text>
         </TouchableOpacity>
 
@@ -152,7 +182,7 @@ export const LevelSelectScreen: React.FC<Props> = ({
           playSound('level_tap');
           setSettingsVisible(true);
         }}>
-          <Text style={styles.settingsIcon}>⚙️</Text>
+          <Image source={IMAGES.settingsBtn} style={styles.settingsIcon} resizeMode="contain" />
         </TouchableOpacity>
       </View>
 
@@ -247,7 +277,7 @@ export const LevelSelectScreen: React.FC<Props> = ({
                   />
 
                   <View style={styles.lockedContent}>
-                    <Text style={styles.lockIconBig}>🔒</Text>
+                    <Image source={IMAGES.blocks[3]} style={styles.lockedBlockIcon} resizeMode="contain" />
                     <Text style={[styles.lockedWorldName, { color: world.accentColor }]}>
                       {world.name.toUpperCase()}
                     </Text>
@@ -366,22 +396,49 @@ export const LevelSelectScreen: React.FC<Props> = ({
                               {globalIdx + 1}
                             </Text>
                             {level.isBoss && (
-                              <Text style={styles.bossBadge}>👾</Text>
+                              <Image source={IMAGES.boss} style={styles.bossBadge} resizeMode="contain" />
                             )}
                           </>
                         ) : (
-                          <Text style={styles.lockIcon}>🔒</Text>
+                          <Image source={IMAGES.blocks[3]} style={styles.lockIcon} resizeMode="contain" />
                         )}
                       </View>
 
                       {/* Stars */}
                       {isUnlocked && (
-                        <View style={styles.starsRow}>
-                          {[0, 1, 2].map((s) => (
-                            <Text key={s} style={styles.starIcon}>
-                              {s < stars ? '⭐' : '☆'}
-                            </Text>
-                          ))}
+                        <View style={styles.starsWrap}>
+                          {stars === 3 && (
+                            <Animated.View
+                              style={[
+                                styles.starShimmer,
+                                {
+                                  opacity: starShimmerOpacity,
+                                  transform: [
+                                    { rotate: starShimmerRotate },
+                                    { scale: starShimmerScale },
+                                  ],
+                                },
+                              ]}
+                            >
+                              <View style={[styles.sparkleDot, styles.sparkleTop]} />
+                              <View style={[styles.sparkleDot, styles.sparkleRight]} />
+                              <View style={[styles.sparkleDot, styles.sparkleBottom]} />
+                              <View style={[styles.sparkleDot, styles.sparkleLeft]} />
+                            </Animated.View>
+                          )}
+                          <View style={styles.starsRow}>
+                            {[0, 1, 2].map((s) => (
+                              <Text
+                                key={s}
+                                style={[
+                                  styles.starIcon,
+                                  s < stars ? styles.starEarned : styles.starEmpty,
+                                ]}
+                              >
+                                ★
+                              </Text>
+                            ))}
+                          </View>
                         </View>
                       )}
                     </TouchableOpacity>
@@ -399,8 +456,13 @@ export const LevelSelectScreen: React.FC<Props> = ({
         visible={settingsVisible}
         soundEnabled={soundEnabled}
         hapticsEnabled={hapticsEnabled}
+        plusActive={plusActive}
         onClose={() => setSettingsVisible(false)}
         onUpdateSettings={onUpdateSettings}
+        onOpenPlus={() => {
+          setSettingsVisible(false);
+          onOpenPlus();
+        }}
       />
     </ImageBackground>
   );
@@ -445,6 +507,12 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
+  badgeGlow: {
+    position: 'absolute',
+    width: 58,
+    height: 34,
+    opacity: 0.55,
+  },
   bobaCounter: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -476,7 +544,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.15)',
   },
   settingsIcon: {
-    fontSize: 28,
+    width: 42,
+    height: 42,
   },
   scroll: {
     alignItems: 'center',
@@ -627,19 +696,79 @@ const styles = StyleSheet.create({
   },
   bossBadge: {
     position: 'absolute',
-    top: -4,
-    right: -4,
-    fontSize: 16,
+    top: -10,
+    right: -10,
+    width: 24,
+    height: 24,
   },
   lockIcon: {
-    fontSize: 24,
+    width: 30,
+    height: 30,
+    opacity: 0.75,
+  },
+  starsWrap: {
+    width: 62,
+    minHeight: 18,
+    marginTop: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
   },
   starsRow: {
     flexDirection: 'row',
-    gap: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    zIndex: 1,
   },
   starIcon: {
-    fontSize: 11,
+    fontSize: 14,
+    lineHeight: 16,
+    fontWeight: '900',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  starEarned: {
+    color: '#FFD45C',
+    textShadowColor: 'rgba(86, 39, 7, 0.75)',
+  },
+  starEmpty: {
+    color: 'rgba(95, 51, 23, 0.72)',
+    textShadowColor: 'rgba(255, 238, 178, 0.42)',
+  },
+  starShimmer: {
+    position: 'absolute',
+    width: 58,
+    height: 24,
+    top: -3,
+    left: 2,
+  },
+  sparkleDot: {
+    position: 'absolute',
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#FFF3A7',
+    shadowColor: '#FFD45C',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.85,
+    shadowRadius: 4,
+  },
+  sparkleTop: {
+    top: 1,
+    left: 27,
+  },
+  sparkleRight: {
+    top: 10,
+    right: 0,
+  },
+  sparkleBottom: {
+    bottom: 0,
+    left: 30,
+  },
+  sparkleLeft: {
+    top: 10,
+    left: 0,
   },
   // Locked World Card Styles
   lockedWorldCard: {
@@ -661,9 +790,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 1,
   },
-  lockIconBig: {
-    fontSize: 36,
+  lockedBlockIcon: {
+    width: 42,
+    height: 42,
     marginBottom: 8,
+    opacity: 0.75,
   },
   lockedWorldName: {
     fontSize: 22,

@@ -22,13 +22,6 @@ const WORLD_FLAVOR: Record<number, string> = {
   3: 'Bold & spiced.\nThe ultimate challenge.',
 };
 
-const WORLD_EMOJI: Record<number, string> = {
-  0: '🧋',
-  1: '🍵',
-  2: '💜',
-  3: '🌶️',
-};
-
 const AUTO_DISMISS_MS = 3500;
 
 const { width: SW, height: SH } = Dimensions.get('screen');
@@ -102,8 +95,11 @@ export const WorldIntroModal: React.FC<Props> = ({ worldIndex, world, onDone }) 
             </Text>
           </View>
 
-          {/* Big emoji */}
-          <Text style={styles.emoji}>{WORLD_EMOJI[worldIndex] ?? '🧋'}</Text>
+          <Image
+            source={IMAGES.worldMascots[worldIndex] ?? IMAGES.worldMascots[0]}
+            style={styles.worldArt}
+            resizeMode="contain"
+          />
 
           {/* World name */}
           <Text style={[styles.worldName, { color: world.ballColor }]}>{world.name}</Text>
@@ -112,9 +108,6 @@ export const WorldIntroModal: React.FC<Props> = ({ worldIndex, world, onDone }) 
           <Text style={[styles.flavor, { color: world.accentColor + 'DD' }]}>
             {WORLD_FLAVOR[worldIndex] ?? ''}
           </Text>
-
-          {/* Mascot */}
-          <Image source={IMAGES.mascotExcited} style={styles.mascot} resizeMode="contain" />
 
           {/* CTA */}
           <TouchableOpacity
@@ -161,8 +154,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 3,
   },
-  emoji: {
-    fontSize: 76,
+  worldArt: {
+    width: 190,
+    height: 150,
     marginBottom: 10,
   },
   worldName: {
@@ -181,11 +175,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 25,
     marginBottom: 20,
-  },
-  mascot: {
-    width: 150,
-    height: 150,
-    marginBottom: 28,
   },
   btn: {
     paddingHorizontal: 52,

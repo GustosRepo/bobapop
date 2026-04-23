@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // ─── Save format versioning ────────────────────────────────────────────────────
 //  Bump CURRENT_VERSION whenever SaveData gains new required fields.
 //  Add a migration case below so old saves are upgraded rather than wiped.
-const CURRENT_VERSION = 5;
+const CURRENT_VERSION = 6;
 const STORAGE_KEY = '@bobapop_save_v1';   // key never changes; version lives inside the JSON
 
 export interface SaveData {
@@ -17,6 +17,7 @@ export interface SaveData {
   soundEnabled: boolean;
   hapticsEnabled: boolean;
   adsRemoved: boolean;
+  seenOnboarding: Record<string, boolean>;
 }
 
 const DEFAULT_SAVE: SaveData = {
@@ -29,6 +30,7 @@ const DEFAULT_SAVE: SaveData = {
   soundEnabled: true,
   hapticsEnabled: true,
   adsRemoved: false,
+  seenOnboarding: {},
 };
 
 // ─── Migration table ──────────────────────────────────────────────────────────
@@ -76,6 +78,11 @@ function migrate(raw: Record<string, unknown>): SaveData {
     data = { ...data, adsRemoved: false, version: 5 };
   }
 
+  // v5 → v6: add one-time onboarding flags
+  if (data.version < 6) {
+    data = { ...data, seenOnboarding: {}, version: 6 };
+  }
+
   return data;
 }
 
@@ -90,9 +97,11 @@ interface UseSaveDataReturn {
   soundEnabled: boolean;
   hapticsEnabled: boolean;
   adsRemoved: boolean;
+  seenOnboarding: Record<string, boolean>;
   unlockAdsRemoved: () => void;
   recordLevelComplete: (levelIndex: number, stars: number, score: number, bricksPopped: number) => void;
   markWorldSeen: (worldIndex: number) => void;
+  markOnboardingSeen: (key: string) => void;
   updateSettings: (sound: boolean, haptics: boolean) => void;
 }
 
@@ -157,6 +166,18 @@ export function useSaveData(devUnlockAll: boolean, totalLevels: number): UseSave
     persist({ ...prev, seenWorlds: [...prev.seenWorlds, worldIndex] });
   }, [persist]);
 
+  const markOnboardingSeen = useCallback((key: string) => {
+    const prev = saveRef.current;
+    if (prev.seenOnboarding[key]) return;
+    persist({
+      ...prev,
+      seenOnboarding: {
+        ...prev.seenOnboarding,
+        [key]: true,
+      },
+    });
+  }, [persist]);
+
   const updateSettings = useCallback((sound: boolean, haptics: boolean) => {
     persist({ ...saveRef.current, soundEnabled: sound, hapticsEnabled: haptics });
   }, [persist]);
@@ -168,5 +189,5 @@ export function useSaveData(devUnlockAll: boolean, totalLevels: number): UseSave
   // ── Resolved values ─────────────────────────────────────────────────────────
   const unlockedUpTo = devUnlockAll ? totalLevels - 1 : save.unlockedUpTo;
 
-  return { loading, unlockedUpTo, levelStars: save.levelStars, levelHighScores: save.levelHighScores, totalBobas: save.totalBobas, seenWorlds: save.seenWorlds, soundEnabled: save.soundEnabled, hapticsEnabled: save.hapticsEnabled, adsRemoved: save.adsRemoved, recordLevelComplete, markWorldSeen, updateSettings, unlockAdsRemoved };
+  return { loading, unlockedUpTo, levelStars: save.levelStars, levelHighScores: save.levelHighScores, totalBobas: save.totalBobas, seenWorlds: save.seenWorlds, soundEnabled: save.soundEnabled, hapticsEnabled: save.hapticsEnabled, adsRemoved: save.adsRemoved, seenOnboarding: save.seenOnboarding, recordLevelComplete, markWorldSeen, markOnboardingSeen, updateSettings, unlockAdsRemoved };
 }

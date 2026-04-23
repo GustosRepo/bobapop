@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { View, StyleSheet, Image, ImageBackground } from 'react-native';
-import { GameState, PowerUpType } from '../game/types';
+import { GameState } from '../game/types';
 import { WorldTheme } from '../constants/themes';
 import { IMAGES } from '../assets/images';
 import {
@@ -22,17 +22,26 @@ interface Props {
   scaleY: number;
 }
 
-// Which block image to show based on the power-up inside the brick.
-// blockvar 1 = plain/no power-up, 2 = multi-ball, 3 = wide paddle, 4 = sticky/slow
-const POWERUP_BLOCK_IMAGE: Record<PowerUpType, (typeof IMAGES.blocks)[number]> = {
-  multi_ball:    IMAGES.blocks[1], // blockvar 2
-  wide_paddle:   IMAGES.blocks[2], // blockvar 3
-  sticky_paddle: IMAGES.blocks[3], // blockvar 4
-  slow_motion:   IMAGES.blocks[3], // blockvar 4 (same tier as sticky)
-};
-
 export const GameCanvas: React.FC<Props> = ({ state, theme, width, height, scaleX, scaleY }) => {
   const paddleY = GAME_HEIGHT - PADDLE_Y_OFFSET;
+  const getBallImage = (variant?: 'default' | 'hit' | 'hot' | 'multi') => {
+    if (variant === 'multi') return IMAGES.ballMulti;
+    if (variant === 'hot') return IMAGES.ballHot;
+    if (variant === 'hit') return IMAGES.ballHit;
+    return IMAGES.ball;
+  };
+  const getParticleImage = (kind?: 'boba' | 'splash' | 'burst') => {
+    if (kind === 'splash') return IMAGES.effectSplash;
+    if (kind === 'burst') return IMAGES.effectBurst;
+    return IMAGES.particleBoba;
+  };
+  const getPowerUpImage = (type?: string) => {
+    if (type === 'multi_ball') return IMAGES.ballMulti;
+    if (type === 'wide_paddle') return IMAGES.paddleWide;
+    if (type === 'sticky_paddle') return IMAGES.paddleSticky;
+    if (type === 'slow_motion') return IMAGES.ballHot;
+    return null;
+  };
 
   // ── Ball trail history ──────────────────────────────────────────────────────
   // Keeps a ring of past positions per ball to render fading ghost frames.
@@ -130,12 +139,16 @@ export const GameCanvas: React.FC<Props> = ({ state, theme, width, height, scale
       {state.bricks.map((brick) => {
         if (!brick.active) return null;
         const r = brickRect(brick);
-        // Power-up type determines the art; HP drives opacity so bricks look cracked as they take damage
-        const blockImg = brick.powerUp ? POWERUP_BLOCK_IMAGE[brick.powerUp] : IMAGES.blocks[0];
+        // HP determines the base art so the actual block assets show consistently.
+        const blockImg = IMAGES.blocks[Math.min(Math.max(brick.maxHp, 1), IMAGES.blocks.length) - 1];
         const opacity = 0.5 + (brick.hp / brick.maxHp) * 0.5;
         const flashEntry = brickFlash.get(brick.id);
         const isFlashing = flashEntry ? (now - flashEntry.flashStart) < FLASH_MS : false;
         const pulseScale = brick.powerUp ? 1 + 0.07 * Math.abs(Math.sin(now / 500)) : 1;
+        const brickW = r.w * scaleX;
+        const brickH = r.h * scaleY;
+        const artSize = Math.min(brickW, brickH * 1.38);
+        const powerUpImage = getPowerUpImage(brick.powerUp);
 
         return (
           <View
@@ -146,8 +159,8 @@ export const GameCanvas: React.FC<Props> = ({ state, theme, width, height, scale
               {
                 left: r.x * scaleX,
                 top: r.y * scaleY,
-                width: r.w * scaleX,
-                height: r.h * scaleY,
+                width: brickW,
+                height: brickH,
                 opacity,
                 transform: [{ scale: pulseScale }],
               },
@@ -155,13 +168,17 @@ export const GameCanvas: React.FC<Props> = ({ state, theme, width, height, scale
           >
             <Image
               source={blockImg}
-              style={{ width: r.w * scaleX, height: r.h * scaleY }}
-              resizeMode="stretch"
+              style={{ width: artSize, height: artSize }}
+              resizeMode="contain"
             />
             {isFlashing && (
               <View style={[StyleSheet.absoluteFill, styles.brickFlash]} />
             )}
-            {brick.powerUp && <View style={styles.powerUpDot} />}
+            {powerUpImage && (
+              <View style={styles.powerUpBadge}>
+                <Image source={powerUpImage} style={styles.powerUpBadgeIcon} resizeMode="contain" />
+              </View>
+            )}
           </View>
         );
       })}
@@ -186,18 +203,66 @@ export const GameCanvas: React.FC<Props> = ({ state, theme, width, height, scale
       {/* Balls */}
       {state.balls.map((ball) => {
         if (!ball.active) return null;
-        const size = BALL_RADIUS * 2 * scaleX;
+        const isMultiBall = ball.variant === 'multi';
+        const hitSize = BALL_RADIUS * 2 * scaleX;
+        if (isMultiBall) {
+          const bladeSize = hitSize * 0.50;
+          const orbitRadius = hitSize * 0.25;
+          const spin = now / 55;
+          const centerX = ball.x * scaleX;
+          const centerY = ball.y * scaleY;
+
+          return (
+            <View
+              key={ball.id}
+              pointerEvents="none"
+              style={[
+                styles.ball,
+                {
+                  left: centerX - orbitRadius - bladeSize / 2,
+                  top: centerY - orbitRadius - bladeSize / 2,
+                  width: orbitRadius * 2 + bladeSize,
+                  height: orbitRadius * 2 + bladeSize,
+                },
+              ]}
+            >
+              {[0, 1, 2].map((i) => {
+                const angle = spin + i * (Math.PI * 2 / 3);
+                const x = orbitRadius + Math.cos(angle) * orbitRadius;
+                const y = orbitRadius + Math.sin(angle) * orbitRadius;
+                return (
+                  <Image
+                    key={i}
+                    source={IMAGES.ball}
+                    style={[
+                      styles.multiBlade,
+                      {
+                        left: x,
+                        top: y,
+                        width: bladeSize,
+                        height: bladeSize,
+                      },
+                    ]}
+                    resizeMode="contain"
+                  />
+                );
+              })}
+            </View>
+          );
+        }
+
+        const visualSize = hitSize;
         return (
           <Image
             key={ball.id}
-            source={IMAGES.ball}
+            source={getBallImage(ball.variant)}
             style={[
               styles.ball,
               {
-                left: (ball.x - BALL_RADIUS) * scaleX,
-                top: (ball.y - BALL_RADIUS) * scaleY,
-                width: size,
-                height: size,
+                left: ball.x * scaleX - visualSize / 2,
+                top: ball.y * scaleY - visualSize / 2,
+                width: visualSize,
+                height: visualSize,
               },
             ]}
             resizeMode="contain"
@@ -222,18 +287,21 @@ export const GameCanvas: React.FC<Props> = ({ state, theme, width, height, scale
 
       {/* Particles */}
       {state.particles.map((p) => {
-        const size = p.radius * 2 * scaleX;
+        const isEffect = p.kind === 'splash' || p.kind === 'burst';
+        const size = isEffect ? p.radius * 14 * scaleX : p.radius * 2 * scaleX;
+        const effectAngle = `${Math.atan2(p.vy, p.vx) + Math.PI}rad`;
         return (
           <Image
             key={p.id}
-            source={IMAGES.particleBoba}
+            source={getParticleImage(p.kind)}
             style={{
               position: 'absolute',
-              left: (p.x - p.radius) * scaleX,
-              top: (p.y - p.radius) * scaleY,
+              left: (p.x - size / (2 * scaleX)) * scaleX,
+              top: (p.y - size / (2 * scaleY)) * scaleY,
               width: size,
               height: size,
               opacity: p.alpha,
+              transform: isEffect ? [{ rotate: effectAngle }] : undefined,
             }}
             resizeMode="contain"
           />
@@ -301,14 +369,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
+    borderRadius: 6,
   },
   brickFlash: {
     borderRadius: 4,
     backgroundColor: 'rgba(255,255,255,0.65)',
   },
   brickPowerUp: {
-    overflow: 'visible',
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: '#F5C542',
     borderRadius: 4,
     shadowColor: '#F5C542',
@@ -317,14 +385,26 @@ const styles = StyleSheet.create({
     shadowRadius: 7,
     elevation: 6,
   },
-  powerUpDot: {
+  powerUpBadge: {
     position: 'absolute',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    right: 2,
+    bottom: 2,
+    width: 20,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(42, 15, 5, 0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  powerUpBadgeIcon: {
+    width: 17,
+    height: 13,
   },
   ball: {
+    position: 'absolute',
+  },
+  multiBlade: {
     position: 'absolute',
   },
   paddle: {

@@ -26,6 +26,8 @@ interface Props {
   onGameOver: (score: number) => void;
   onBack: () => void;
   initialLives?: number;
+  seenOnboarding: Record<string, boolean>;
+  onMarkOnboardingSeen: (key: string) => void;
 }
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('screen');
@@ -40,6 +42,8 @@ export const GameScreen: React.FC<Props> = ({
   onGameOver,
   onBack,
   initialLives,
+  seenOnboarding,
+  onMarkOnboardingSeen,
 }) => {
   const {
     gameState,
@@ -53,6 +57,7 @@ export const GameScreen: React.FC<Props> = ({
 
   const level = LEVELS[levelIndex];
   const displayLevel = levelIndex + 1;
+  const showLaunchHint = gameState.phase === 'idle' && levelIndex === 0 && !seenOnboarding.launch;
 
   // ── Screen shake ──────────────────────────────────────────────────────────
   const shakeAnim = useRef(new Animated.Value(0)).current;
@@ -94,6 +99,33 @@ export const GameScreen: React.FC<Props> = ({
   movePaddleRef.current = movePaddle;
   const launchBallRef = useRef(launchBall);
   launchBallRef.current = launchBall;
+  const markOnboardingSeenRef = useRef(onMarkOnboardingSeen);
+  markOnboardingSeenRef.current = onMarkOnboardingSeen;
+  const seenOnboardingRef = useRef(seenOnboarding);
+  seenOnboardingRef.current = seenOnboarding;
+
+  // ── One-time onboarding nudges ─────────────────────────────────────────────
+  const [onboardingToast, setOnboardingToast] = useState<string | null>(null);
+
+  const showOnboardingToast = useCallback((key: string, message: string) => {
+    if (seenOnboardingRef.current[key]) return;
+    markOnboardingSeenRef.current(key);
+    setOnboardingToast(message);
+    const timer = setTimeout(() => setOnboardingToast((current) => (
+      current === message ? null : current
+    )), 3600);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (levelIndex === 2) {
+      return showOnboardingToast('powerup', 'Power-up block! Pop it for a boost.');
+    }
+    if (levelIndex === 4) {
+      return showOnboardingToast('boss', 'Boss Boba! Clear blocks, then pop the boss.');
+    }
+    return undefined;
+  }, [levelIndex, showOnboardingToast]);
 
   // ── Countdown 3-2-1 GO ──────────────────────────────────────────────────────
   const [countdown, setCountdown] = useState<number | null>(3);
@@ -115,6 +147,9 @@ export const GameScreen: React.FC<Props> = ({
       onStartShouldSetPanResponder: () => !countdownActiveRef.current,
       onMoveShouldSetPanResponder: () => !countdownActiveRef.current,
       onPanResponderGrant: (e) => {
+        if (!seenOnboardingRef.current.launch) {
+          markOnboardingSeenRef.current('launch');
+        }
         movePaddleRef.current(e.nativeEvent.pageX / SCALE_X);
         launchBallRef.current();
       },
@@ -154,12 +189,18 @@ export const GameScreen: React.FC<Props> = ({
         />
 
         {/* Launch hint */}
-        {gameState.phase === 'idle' && (
+        {showLaunchHint && (
           <View style={styles.launchHint} pointerEvents="none">
             <Image source={IMAGES.lifeIcon} style={styles.launchBoba} resizeMode="contain" />
             <Text style={styles.launchText}>
               tap & drag to launch
             </Text>
+          </View>
+        )}
+        {onboardingToast !== null && (
+          <View style={styles.onboardingToast} pointerEvents="none">
+            <Image source={IMAGES.lifeIcon} style={styles.toastIcon} resizeMode="contain" />
+            <Text style={styles.toastText}>{onboardingToast}</Text>
           </View>
         )}
         {/* Countdown overlay */}
@@ -260,6 +301,36 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.3)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
+  },
+  onboardingToast: {
+    position: 'absolute',
+    top: SAFE_TOP + 88,
+    left: 24,
+    right: 24,
+    minHeight: 58,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(43, 18, 8, 0.86)',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 199, 91, 0.82)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  toastIcon: {
+    width: 34,
+    height: 34,
+  },
+  toastText: {
+    flex: 1,
+    color: '#FFF6E8',
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '800',
+    textShadowColor: 'rgba(0,0,0,0.35)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   overlay: {
     flex: 1,

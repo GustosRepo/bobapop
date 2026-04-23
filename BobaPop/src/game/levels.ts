@@ -11,12 +11,23 @@ const BOSS_ROW_OFFSET = BOSS_HEIGHT + BRICK_PADDING * 2;
 // Grid is represented as a flat array of rows×cols.
 // 0 = empty, 1 = 1hp, 2 = 2hp, 3 = 3hp
 type Grid = number[][];
+type GuaranteedPowerUp = {
+  row: number;
+  col: number;
+  type: PowerUpType;
+};
 
-function buildBricks(grid: Grid, powerUpChance: number, rowOffset = 0): Omit<Brick, 'id'>[] {
+function buildBricks(
+  grid: Grid,
+  powerUpChance: number,
+  rowOffset = 0,
+  guaranteedPowerUps: GuaranteedPowerUp[] = [],
+): Omit<Brick, 'id'>[] {
   const bricks: Omit<Brick, 'id'>[] = [];
   grid.forEach((row, rIdx) => {
     row.forEach((cell, cIdx) => {
       if (cell === 0) return;
+      const guaranteed = guaranteedPowerUps.find((p) => p.row === rIdx && p.col === cIdx);
       const hasPowerUp = Math.random() < powerUpChance;
       const powerUps: PowerUpType[] = ['multi_ball', 'wide_paddle', 'sticky_paddle', 'slow_motion'];
       bricks.push({
@@ -25,7 +36,7 @@ function buildBricks(grid: Grid, powerUpChance: number, rowOffset = 0): Omit<Bri
         hp: cell,
         maxHp: cell,
         active: true,
-        powerUp: hasPowerUp ? powerUps[Math.floor(Math.random() * powerUps.length)] : undefined,
+        powerUp: guaranteed?.type ?? (hasPowerUp ? powerUps[Math.floor(Math.random() * powerUps.length)] : undefined),
         rowOffset,
       });
     });
@@ -40,6 +51,7 @@ export interface LevelDef {
   ballSpeed: number;
   paddleWidth: number;
   powerUpChance: number;
+  guaranteedPowerUps?: GuaranteedPowerUp[];
   isBoss: boolean;
   bossHp: number;    // 0 for non-boss levels
   bossSpeed: number; // 0 for non-boss levels
@@ -210,7 +222,7 @@ export const LEVELS: LevelDef[] = [
   // World 0 – Brown Sugar (easy: slow ball, wide paddle, generous power-ups)
   { worldIndex: 0, levelInWorld: 1, grid: bs1, ballSpeed: 6,    paddleWidth: 95, powerUpChance: 0.24, isBoss: false, bossHp: 0,  bossSpeed: 0   },
   { worldIndex: 0, levelInWorld: 2, grid: bs2, ballSpeed: 6.5,  paddleWidth: 93, powerUpChance: 0.23, isBoss: false, bossHp: 0,  bossSpeed: 0   },
-  { worldIndex: 0, levelInWorld: 3, grid: bs3, ballSpeed: 7,    paddleWidth: 90, powerUpChance: 0.22, isBoss: false, bossHp: 0,  bossSpeed: 0   },
+  { worldIndex: 0, levelInWorld: 3, grid: bs3, ballSpeed: 7,    paddleWidth: 90, powerUpChance: 0.22, guaranteedPowerUps: [{ row: 1, col: 3, type: 'multi_ball' }], isBoss: false, bossHp: 0,  bossSpeed: 0   },
   { worldIndex: 0, levelInWorld: 4, grid: bs4, ballSpeed: 7.5,  paddleWidth: 88, powerUpChance: 0.21, isBoss: false, bossHp: 0,  bossSpeed: 0   },
   { worldIndex: 0, levelInWorld: 5, grid: bs5, ballSpeed: 8,    paddleWidth: 86, powerUpChance: 0.20, isBoss: true,  bossHp: 12, bossSpeed: 1.5 },
   // World 1 – Matcha (medium)
@@ -238,7 +250,7 @@ export function buildLevelBricks(levelIndex: number): Brick[] {
   const level = LEVELS[levelIndex];
   if (!level) return [];
   const rowOffset = level.isBoss ? BOSS_ROW_OFFSET : 0;
-  return buildBricks(level.grid, level.powerUpChance, rowOffset).map((b) => ({
+  return buildBricks(level.grid, level.powerUpChance, rowOffset, level.guaranteedPowerUps).map((b) => ({
     ...b,
     id: `brick_${++_brickIdCounter}_${b.col}_${b.row}`,
   }));
