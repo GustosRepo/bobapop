@@ -20,6 +20,9 @@ interface Props {
   adsRemoved: boolean;
   continueOffer: ContinueOffer;
   adAvailable: boolean;
+  energyLives: number;
+  maxEnergyLives: number;
+  nextEnergyInMs: number;
   onContinue: () => void;
   onRetry: () => void;
   onMenu: () => void;
@@ -35,6 +38,9 @@ export const GameOverScreen: React.FC<Props> = ({
   adsRemoved,
   continueOffer,
   adAvailable,
+  energyLives,
+  maxEnergyLives,
+  nextEnergyInMs,
   onContinue,
   onRetry,
   onMenu,
@@ -55,6 +61,8 @@ export const GameOverScreen: React.FC<Props> = ({
   }, [secondsRemaining]);
 
   const hasContinue = continueOffer.canShow;
+  const canRetryFresh = energyLives > 0;
+  const nextEnergyMinutes = Math.ceil(nextEnergyInMs / 60000);
   const waitingForDelay = secondsRemaining > 0;
   const waitingForAd = hasContinue && !adsRemoved && !adAvailable;
   const canPressContinue = hasContinue && !waitingForDelay && !waitingForAd;
@@ -104,16 +112,25 @@ export const GameOverScreen: React.FC<Props> = ({
             </View>
           )}
           <TouchableOpacity
-            style={[styles.btn, { backgroundColor: theme.paddleColor }]}
+            style={[
+              styles.btn,
+              canRetryFresh ? undefined : styles.continueBtnDisabled,
+              { backgroundColor: theme.paddleColor },
+            ]}
             onPress={onRetry}
+            disabled={!canRetryFresh}
           >
-            <Text style={styles.btnText}>Retry Level</Text>
+            <Text style={styles.btnText}>
+              {canRetryFresh
+                ? `Retry Level (${energyLives}/${maxEnergyLives})`
+                : `Next Life in ${nextEnergyMinutes}m`}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.btn, styles.btnOutline, { borderColor: theme.accentColor }]}
             onPress={onMenu}
           >
-            <Text style={[styles.btnTextOutline, { color: theme.accentColor }]}>← Levels</Text>
+            <Text style={[styles.btnTextOutline, { color: theme.accentColor }]}>Levels</Text>
           </TouchableOpacity>
           {!adsRemoved && levelNumber >= 6 && (
             <TouchableOpacity style={styles.plusPrompt} onPress={onOpenPlus} activeOpacity={0.82}>

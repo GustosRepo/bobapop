@@ -10,6 +10,8 @@ import {
   Linking,
   Image,
   ImageSourcePropType,
+  Platform,
+  ScrollView,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -66,76 +68,82 @@ export const SettingsModal: React.FC<Props> = ({
         <Animated.View
           style={[styles.sheet, { transform: [{ scale: scaleAnim }], opacity: opacityAnim }]}
         >
-          <TouchableOpacity activeOpacity={1}>
+          <TouchableOpacity activeOpacity={1} style={styles.sheetTouch}>
             <LinearGradient
               colors={['#FFF8F0', '#FFF1DC']}
               style={StyleSheet.absoluteFill}
             />
 
-            {/* Handle */}
-            <View style={styles.handle} />
-
-            {/* Title */}
-            <Text style={styles.title}>Settings</Text>
-
-            {/* ── Toggles ── */}
-            <View style={styles.section}>
-              <SettingsActionRow
-                label={plusActive ? 'BobaPop Plus Active' : 'BobaPop Plus'}
-                detail={plusActive ? 'Ad-free continues enabled' : 'Ad-free continues and no waits'}
-                icon={IMAGES.mascotHappy}
-                onPress={onOpenPlus}
-              />
-              <View style={styles.divider} />
-              <SettingsRow
-                label="Sound Effects"
-                icon={IMAGES.effectBurst}
-                value={soundEnabled}
-                onToggle={toggleSound}
-              />
-              <View style={styles.divider} />
-              <SettingsRow
-                label="Haptics"
-                icon={IMAGES.particleBoba}
-                value={hapticsEnabled}
-                onToggle={toggleHaptics}
-              />
-            </View>
-
-            {/* ── Credits ── */}
-            <View style={styles.section}>
-              <Text style={styles.sectionLabel}>About</Text>
-              <TouchableOpacity
-                style={styles.creditRow}
-                onPress={() => Linking.openURL('https://codewerx.com')}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.creditText}>Made by CODEWERX LLC</Text>
-                <Text style={styles.creditArrow}>›</Text>
-              </TouchableOpacity>
-              <View style={styles.divider} />
-              <View style={styles.creditRow}>
-                <Text style={styles.creditText}>Version 1.0.0</Text>
-              </View>
-            </View>
-
-            {/* ── Close ── */}
-            <TouchableOpacity
-              style={styles.closeBtn}
-              onPress={() => {
-                if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                onClose();
-              }}
-              activeOpacity={0.85}
+            <ScrollView
+              bounces={false}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.sheetContent}
             >
-              <LinearGradient
-                colors={['#8B4513', '#5C2E00']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
-              <Text style={styles.closeBtnText}>Done</Text>
-            </TouchableOpacity>
+              {/* Handle */}
+              <View style={styles.handle} />
+
+              {/* Title */}
+              <Text style={styles.title}>Settings</Text>
+
+              {/* ── Toggles ── */}
+              <View style={styles.section}>
+                <SettingsActionRow
+                  label={plusActive ? 'BobaPop Plus Active' : 'BobaPop Plus'}
+                  detail={plusActive ? 'Ad-free continues enabled' : 'Ad-free continues and no waits'}
+                  icon={IMAGES.mascotHappy}
+                  onPress={onOpenPlus}
+                />
+                <View style={styles.divider} />
+                <SettingsRow
+                  label="Sound Effects"
+                  icon={IMAGES.effectBurst}
+                  value={soundEnabled}
+                  onToggle={toggleSound}
+                />
+                <View style={styles.divider} />
+                <SettingsRow
+                  label="Haptics"
+                  icon={IMAGES.particleBoba}
+                  value={hapticsEnabled}
+                  onToggle={toggleHaptics}
+                />
+              </View>
+
+              {/* ── Credits ── */}
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel}>About</Text>
+                <TouchableOpacity
+                  style={styles.creditRow}
+                  onPress={() => Linking.openURL('https://codewerx.com')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.creditText}>Made by CODEWERX LLC</Text>
+                  <Text style={styles.creditArrow}>›</Text>
+                </TouchableOpacity>
+                <View style={styles.divider} />
+                <View style={styles.creditRow}>
+                  <Text style={styles.creditText}>Version 1.0.0</Text>
+                </View>
+              </View>
+
+              {/* ── Close ── */}
+              <TouchableOpacity
+                style={styles.closeBtn}
+                onPress={() => {
+                  if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  onClose();
+                }}
+                activeOpacity={0.85}
+              >
+                <LinearGradient
+                  colors={['#8B4513', '#5C2E00']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+                <Text style={styles.closeBtnText}>Done</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </TouchableOpacity>
         </Animated.View>
       </TouchableOpacity>
@@ -192,7 +200,13 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     overflow: 'hidden',
-    paddingBottom: 40,
+    maxHeight: '86%',
+  },
+  sheetTouch: {
+    overflow: 'hidden',
+  },
+  sheetContent: {
+    paddingBottom: Platform.OS === 'ios' ? 34 : 22,
   },
   handle: {
     width: 44,

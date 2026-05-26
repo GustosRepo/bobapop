@@ -15,6 +15,11 @@ import {
 import { WORLDS } from '../constants/themes';
 import { LEVELS } from '../game/levels';
 import { useSound, _hapticsEnabled } from './useSound';
+import {
+  trackBossEnraged,
+  trackLifeLost,
+  trackPowerUpCollected,
+} from '../analytics/gameAnalytics';
 
 function buildInitialBoss(level: LevelDef): BossBrick | undefined {
   if (!level.isBoss) return undefined;
@@ -32,7 +37,27 @@ function buildInitialBoss(level: LevelDef): BossBrick | undefined {
   };
 }
 
-function buildInitialState(levelIndex: number, initialLives = 3): GameState {
+function reviveState(state: GameState, lives: number): GameState {
+  const paddle = {
+    ...state.paddle,
+    width: state.paddle.baseWidth,
+  };
+  return {
+    ...state,
+    balls: [makeStickyBall(paddle)],
+    paddle,
+    particles: [],
+    activePowerUps: [],
+    hapticEvents: undefined,
+    telemetryEvents: undefined,
+    lives,
+    phase: 'idle',
+    stickyCount: 3,
+  };
+}
+
+function buildInitialState(levelIndex: number, initialLives = 3, resumeState?: GameState): GameState {
+  if (resumeState) return reviveState(resumeState, initialLives);
   const level = LEVELS[levelIndex];
   const worldTheme = WORLDS[level?.worldIndex ?? 0];
   const paddleWidth = level?.paddleWidth ?? 90;
@@ -40,7 +65,7 @@ function buildInitialState(levelIndex: number, initialLives = 3): GameState {
   const ball = makeInitialBall(paddleX, paddleWidth, level?.ballSpeed ?? 7);
   return {
     balls: [ball],
-    paddle: { x: paddleX, width: paddleWidth },
+    paddle: { x: paddleX, width: paddleWidth, baseWidth: paddleWidth },
     bricks: buildLevelBricks(levelIndex),
     particles: [],
     activePowerUps: [],
@@ -53,8 +78,8 @@ function buildInitialState(levelIndex: number, initialLives = 3): GameState {
   };
 }
 
-export function useGameLoop(levelIndex: number, initialLives = 3) {
-  const [gameState, setGameState] = useState<GameState>(() => buildInitialState(levelIndex, initialLives));
+export function useGameLoop(levelIndex: number, initialLives = 3, resumeState?: GameState) {
+  const [gameState, setGameState] = useState<GameState>(() => buildInitialState(levelIndex, initialLives, resumeState));
   const stateRef = useRef<GameState>(gameState);
   const rafRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
@@ -119,12 +144,24 @@ export function useGameLoop(levelIndex: number, initialLives = 3) {
       }
     }
 
+    if (next.telemetryEvents && next.telemetryEvents.length > 0) {
+      for (const event of next.telemetryEvents) {
+        if (event.type === 'life_lost') {
+          trackLifeLost(levelIndex, event.livesRemaining);
+        } else if (event.type === 'power_up_collected') {
+          trackPowerUpCollected(levelIndex, event.powerUp);
+        } else if (event.type === 'boss_enraged') {
+          trackBossEnraged(levelIndex);
+        }
+      }
+    }
+
     if (next.phase === 'playing') {
       rafRef.current = requestAnimationFrame(tick);
     } else {
       runningRef.current = false;
     }
-  }, [worldTheme]);
+  }, [levelIndex, playSound, worldTheme]);
 
   const startLoop = useCallback(() => {
     if (runningRef.current) return;
@@ -207,10 +244,10 @@ export function useGameLoop(levelIndex: number, initialLives = 3) {
   }, [startLoop, syncState]);
 
   useEffect(() => {
-    const fresh = buildInitialState(levelIndex, initialLives);
+    const fresh = buildInitialState(levelIndex, initialLives, resumeState);
     syncState(fresh);
     return () => stopLoop();
-  }, [initialLives, levelIndex]);
+  }, [initialLives, levelIndex, resumeState]);
 
   return {
     gameState,

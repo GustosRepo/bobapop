@@ -10,7 +10,8 @@ const REWARDED_UNIT_ID = __DEV__
   : 'ca-app-pub-8863066373093222/9842491767';
 
 const REQUEST_OPTIONS = { requestNonPersonalizedAdsOnly: true };
-export type RewardedAdResult = 'watched' | 'not_available' | 'skipped' | 'closed' | 'error';
+export type RewardedAdResult = 'watched' | 'not_available' | 'skipped' | 'closed' | 'timeout' | 'error';
+const AD_RESULT_TIMEOUT_MS = 90_000;
 
 export function useRewardedAd() {
   const { isLoaded, isEarnedReward, isClosed, load, show } = useAdMobRewardedAd(
@@ -31,23 +32,39 @@ export function useRewardedAd() {
   // Pending reward callback — fired when isEarnedReward flips true
   const pendingReward = useRef<((result: RewardedAdResult) => void) | null>(null);
   const rewardEarnedRef = useRef(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearAdTimeout = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
+
+  const settleReward = useCallback((result: RewardedAdResult) => {
+    if (!pendingReward.current) return;
+    clearAdTimeout();
+    const callback = pendingReward.current;
+    pendingReward.current = null;
+    callback(result);
+  }, [clearAdTimeout]);
 
   useEffect(() => {
     if (isEarnedReward && pendingReward.current) {
       rewardEarnedRef.current = true;
-      pendingReward.current('watched');
-      pendingReward.current = null;
+      settleReward('watched');
     }
-  }, [isEarnedReward]);
+  }, [isEarnedReward, settleReward]);
 
   useEffect(() => {
     if (!isClosed) return;
     if (!rewardEarnedRef.current && pendingReward.current) {
-      pendingReward.current('closed');
-      pendingReward.current = null;
+      settleReward('closed');
     }
     rewardEarnedRef.current = false;
-  }, [isClosed]);
+  }, [isClosed, settleReward]);
+
+  useEffect(() => clearAdTimeout, [clearAdTimeout]);
 
   /**
    * Show the rewarded ad. Rewards are granted only after the ad SDK reports
@@ -60,17 +77,24 @@ export function useRewardedAd() {
         load();
         return;
       }
+      if (pendingReward.current) {
+        onResult('error');
+        return;
+      }
       pendingReward.current = onResult;
       rewardEarnedRef.current = false;
+      timeoutRef.current = setTimeout(() => {
+        settleReward('timeout');
+        load();
+      }, AD_RESULT_TIMEOUT_MS);
       try {
         show();
       } catch {
-        pendingReward.current = null;
-        onResult('error');
+        settleReward('error');
         load();
       }
     },
-    [isLoaded, load, show],
+    [isLoaded, load, settleReward, show],
   );
 
   return { isLoaded, showAd };

@@ -1,5 +1,5 @@
-import React, { useRef } from 'react';
-import { View, StyleSheet, Image, ImageBackground } from 'react-native';
+import React, { memo, useRef } from 'react';
+import { View, StyleSheet, Image, ImageBackground, ImageSourcePropType } from 'react-native';
 import { GameState } from '../game/types';
 import { WorldTheme } from '../constants/themes';
 import { IMAGES } from '../assets/images';
@@ -21,6 +21,73 @@ interface Props {
   scaleX: number;
   scaleY: number;
 }
+
+interface BrickViewProps {
+  blockImg: ImageSourcePropType;
+  brickH: number;
+  brickW: number;
+  flashActive: boolean;
+  left: number;
+  opacity: number;
+  powerUpImage: ImageSourcePropType | null;
+  pulseScale: number;
+  top: number;
+}
+
+const BrickView = memo<BrickViewProps>(({
+  blockImg,
+  brickH,
+  brickW,
+  flashActive,
+  left,
+  opacity,
+  powerUpImage,
+  pulseScale,
+  top,
+}) => {
+  const artSize = Math.min(brickW, brickH * 1.38);
+
+  return (
+    <View
+      style={[
+        styles.brick,
+        powerUpImage ? styles.brickPowerUp : undefined,
+        {
+          left,
+          top,
+          width: brickW,
+          height: brickH,
+          opacity,
+          transform: [{ scale: pulseScale }],
+        },
+      ]}
+    >
+      <Image
+        source={blockImg}
+        style={{ width: artSize, height: artSize }}
+        resizeMode="contain"
+      />
+      {flashActive && (
+        <View style={[StyleSheet.absoluteFill, styles.brickFlash]} />
+      )}
+      {powerUpImage && (
+        <View style={styles.powerUpBadge}>
+          <Image source={powerUpImage} style={styles.powerUpBadgeIcon} resizeMode="contain" />
+        </View>
+      )}
+    </View>
+  );
+}, (prev, next) => (
+  prev.blockImg === next.blockImg
+  && prev.brickH === next.brickH
+  && prev.brickW === next.brickW
+  && prev.flashActive === next.flashActive
+  && prev.left === next.left
+  && prev.opacity === next.opacity
+  && prev.powerUpImage === next.powerUpImage
+  && prev.pulseScale === next.pulseScale
+  && prev.top === next.top
+));
 
 export const GameCanvas: React.FC<Props> = ({ state, theme, width, height, scaleX, scaleY }) => {
   const paddleY = GAME_HEIGHT - PADDLE_Y_OFFSET;
@@ -144,42 +211,24 @@ export const GameCanvas: React.FC<Props> = ({ state, theme, width, height, scale
         const opacity = 0.5 + (brick.hp / brick.maxHp) * 0.5;
         const flashEntry = brickFlash.get(brick.id);
         const isFlashing = flashEntry ? (now - flashEntry.flashStart) < FLASH_MS : false;
-        const pulseScale = brick.powerUp ? 1 + 0.07 * Math.abs(Math.sin(now / 500)) : 1;
+        const pulseScale = brick.powerUp ? 1.04 : 1;
         const brickW = r.w * scaleX;
         const brickH = r.h * scaleY;
-        const artSize = Math.min(brickW, brickH * 1.38);
         const powerUpImage = getPowerUpImage(brick.powerUp);
 
         return (
-          <View
+          <BrickView
             key={brick.id}
-            style={[
-              styles.brick,
-              brick.powerUp ? styles.brickPowerUp : undefined,
-              {
-                left: r.x * scaleX,
-                top: r.y * scaleY,
-                width: brickW,
-                height: brickH,
-                opacity,
-                transform: [{ scale: pulseScale }],
-              },
-            ]}
-          >
-            <Image
-              source={blockImg}
-              style={{ width: artSize, height: artSize }}
-              resizeMode="contain"
-            />
-            {isFlashing && (
-              <View style={[StyleSheet.absoluteFill, styles.brickFlash]} />
-            )}
-            {powerUpImage && (
-              <View style={styles.powerUpBadge}>
-                <Image source={powerUpImage} style={styles.powerUpBadgeIcon} resizeMode="contain" />
-              </View>
-            )}
-          </View>
+            blockImg={blockImg}
+            brickH={brickH}
+            brickW={brickW}
+            flashActive={isFlashing}
+            left={r.x * scaleX}
+            opacity={opacity}
+            powerUpImage={powerUpImage}
+            pulseScale={pulseScale}
+            top={r.y * scaleY}
+          />
         );
       })}
 

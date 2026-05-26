@@ -5,22 +5,17 @@ import {
   GAME_TOP_INSET,
   BALL_RADIUS,
   BALL_SPEED_MAX,
-  PADDLE_WIDTH,
   PADDLE_HEIGHT,
   PADDLE_Y_OFFSET,
   BRICK_WIDTH,
   BRICK_HEIGHT,
   BRICK_PADDING,
   BRICK_TOP_OFFSET,
-  BRICK_COLS,
   PARTICLE_COUNT,
   PARTICLE_LIFETIME,
   SLOW_MOTION_DURATION,
   WIDE_PADDLE_DURATION,
   STICKY_DURATION,
-  BOSS_WIDTH,
-  BOSS_HEIGHT,
-  BOSS_Y,
 } from '../constants/gameConfig';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -45,13 +40,13 @@ export function paddleRect(state: GameState) {
   };
 }
 
-function clampSpeed(ball: Ball) {
-  const speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+function clampVelocity(vx: number, vy: number) {
+  const speed = Math.sqrt(vx * vx + vy * vy);
   if (speed > BALL_SPEED_MAX) {
     const scale = BALL_SPEED_MAX / speed;
-    ball.vx *= scale;
-    ball.vy *= scale;
+    return { vx: vx * scale, vy: vy * scale };
   }
+  return { vx, vy };
 }
 
 // ─── Particle Factory ─────────────────────────────────────────────────────────
@@ -105,7 +100,7 @@ export function physicsStep(
 
   const paddle = {
     ...state.paddle,
-    width: wideActive ? PADDLE_WIDTH * 1.6 : PADDLE_WIDTH,
+    width: wideActive ? state.paddle.baseWidth * 1.6 : state.paddle.baseWidth,
   };
 
   let newBricks = [...state.bricks];
@@ -117,6 +112,7 @@ export function physicsStep(
   // Copy boss so we can mutate it safely during ball loop
   let boss: BossBrick | undefined = state.boss ? { ...state.boss } : undefined;
   const hapticSet = new Set<HapticEvent>();
+  const telemetryEvents: GameState['telemetryEvents'] = [];
 
   // ── update particles ─────────────────────────────────────────────────────
   newParticles = newParticles
@@ -218,6 +214,7 @@ export function physicsStep(
           // drop power-up
           if (brick.powerUp) {
             applyPowerUp(brick.powerUp, x, y, now, activePowerUps, newBallsToAdd, ball, vx, vy);
+            telemetryEvents.push({ type: 'power_up_collected', powerUp: brick.powerUp });
           }
         } else {
           newBricks[i] = { ...brick, hp: newHp };
@@ -271,7 +268,9 @@ export function physicsStep(
       return { ...ball, active: false };
     }
 
-    clampSpeed({ ...ball, vx, vy });
+    const clamped = clampVelocity(vx, vy);
+    vx = clamped.vx;
+    vy = clamped.vy;
     return { ...ball, x, y, vx, vy };
   });
 
@@ -285,6 +284,7 @@ export function physicsStep(
     if (normalBricksLeft === 0 && !boss.enraged) {
       boss.enraged = true;
       boss.vx = Math.sign(boss.vx || 1) * boss.baseSpeed * 1.8;
+      telemetryEvents.push({ type: 'boss_enraged' });
     }
     boss.x += boss.vx * dt;
     if (boss.x < 0) {
@@ -314,6 +314,7 @@ export function physicsStep(
   }
 
   if (lives < state.lives) hapticSet.add('life_lost');
+  if (lives < state.lives) telemetryEvents.push({ type: 'life_lost', livesRemaining: lives });
 
   const allActive = newBricks.filter((b) => b.active);
   const bossAlive = boss !== undefined && !boss.defeated;
@@ -336,6 +337,7 @@ export function physicsStep(
     phase,
     boss,
     hapticEvents: hapticSet.size > 0 ? [...hapticSet] : [],
+    telemetryEvents: telemetryEvents.length > 0 ? telemetryEvents : [],
     bricksPopped: (state.bricksPopped ?? 0) + bricksPoppedThisFrame,
     stickyCount:
       stickyActive

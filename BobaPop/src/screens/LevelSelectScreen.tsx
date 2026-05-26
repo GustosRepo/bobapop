@@ -22,12 +22,16 @@ import { useSound } from '../hooks/useSound';
 
 interface Props {
   unlockedUpTo: number;
+  isLevelUnlocked: (index: number) => boolean;
   levelStars: Record<number, number>;
   levelHighScores: Record<number, number>;
   totalBobas: number;
   soundEnabled: boolean;
   hapticsEnabled: boolean;
   plusActive: boolean;
+  energyLives: number;
+  maxEnergyLives: number;
+  nextEnergyInMs: number;
   onSelectLevel: (index: number) => void;
   onUpdateSettings: (sound: boolean, haptics: boolean) => void;
   onOpenPlus: () => void;
@@ -52,12 +56,16 @@ function calculatePlayerLevel(totalStars: number): { level: number; title: strin
 
 export const LevelSelectScreen: React.FC<Props> = ({
   unlockedUpTo,
+  isLevelUnlocked,
   levelStars,
   levelHighScores,
   totalBobas,
   soundEnabled,
   hapticsEnabled,
   plusActive,
+  energyLives,
+  maxEnergyLives,
+  nextEnergyInMs,
   onSelectLevel,
   onUpdateSettings,
   onOpenPlus,
@@ -73,6 +81,7 @@ export const LevelSelectScreen: React.FC<Props> = ({
     return Object.values(levelStars).reduce((sum, stars) => sum + stars, 0);
   }, [levelStars]);
   const playerLevel = calculatePlayerLevel(totalStars);
+  const nextEnergyMinutes = Math.ceil(nextEnergyInMs / 60000);
 
   useEffect(() => {
     // Mascot entrance
@@ -130,15 +139,24 @@ export const LevelSelectScreen: React.FC<Props> = ({
   const nextLevelIndex = Math.min(unlockedUpTo, LEVELS.length - 1);
   const nextLevel = LEVELS[nextLevelIndex];
   const nextWorld = WORLDS[nextLevel.worldIndex];
+  const levelIndexesByWorld = useMemo(() => {
+    return WORLDS.map((_, worldIndex) => (
+      LEVELS.reduce<number[]>((indexes, level, levelIndex) => {
+        if (level.worldIndex === worldIndex) indexes.push(levelIndex);
+        return indexes;
+      }, [])
+    ));
+  }, []);
 
   // Determine which worlds are unlocked
   const unlockedWorlds = useMemo(() => {
     const worlds = new Set<number>();
-    for (let i = 0; i <= unlockedUpTo; i++) {
+    for (let i = 0; i < LEVELS.length; i++) {
+      if (!isLevelUnlocked(i)) continue;
       worlds.add(LEVELS[i].worldIndex);
     }
     return worlds;
-  }, [unlockedUpTo]);
+  }, [isLevelUnlocked]);
 
   return (
     <ImageBackground
@@ -170,9 +188,20 @@ export const LevelSelectScreen: React.FC<Props> = ({
           <Text style={styles.badgeLevel}>{playerLevel.level}</Text>
         </TouchableOpacity>
 
+        {/* Energy Lives */}
+        <View style={styles.energyCounter}>
+          <Image source={IMAGES.lifeIcon} style={styles.energyIcon} resizeMode="contain" />
+          <View>
+            <Text style={styles.energyText}>{energyLives}/{maxEnergyLives}</Text>
+            <Text style={styles.energySub}>
+              {nextEnergyInMs > 0 ? `${nextEnergyMinutes}m` : 'Full'}
+            </Text>
+          </View>
+        </View>
+
         {/* Boba Counter */}
         <View style={styles.bobaCounter}>
-          <Image source={IMAGES.lifeIcon} style={styles.bobaIcon} resizeMode="contain" />
+          <Text style={styles.bobaIconText}>🧋</Text>
           <Text style={styles.bobaText}>{totalBobas.toLocaleString()}</Text>
         </View>
 
@@ -219,22 +248,26 @@ export const LevelSelectScreen: React.FC<Props> = ({
             {nextLevelIndex === 0 ? 'START' : 'CONTINUE'}
           </Text>
           <Text style={styles.continueBtnSub}>
-            Level {nextLevelIndex + 1}
+            {energyLives > 0
+              ? `Level ${nextLevelIndex + 1} - Lives ${energyLives}/${maxEnergyLives}`
+              : `Next life in ${nextEnergyMinutes}m`}
           </Text>
         </TouchableOpacity>
 
         {/* ── World Sections ── */}
         {WORLDS.map((world, worldIndex) => {
-          const firstLevel = worldIndex * 5;
-          const levelsInWorld = LEVELS.filter((l) => l.worldIndex === worldIndex).length;
-          const completedCount = Array.from({ length: levelsInWorld }, (_, i) => firstLevel + i)
+          const levelIndexes = levelIndexesByWorld[worldIndex] ?? [];
+          const levelsInWorld = levelIndexes.length;
+          const completedCount = levelIndexes
             .filter((idx) => (levelStars[idx] ?? 0) > 0).length;
+          const worldProgress = levelsInWorld > 0 ? (completedCount / levelsInWorld) * 100 : 0;
           
           const isWorldUnlocked = unlockedWorlds.has(worldIndex);
           const worldAnim = worldAnims[worldIndex];
 
           // Calculate unlock requirement for locked worlds
-          const unlockRequirement = worldIndex > 0 ? (worldIndex * 5) : 0;
+          const firstLevelIndex = levelIndexes[0] ?? 0;
+          const unlockRequirement = worldIndex > 0 ? firstLevelIndex : 0;
 
           const animStyle = {
             opacity: worldAnim,
@@ -311,7 +344,7 @@ export const LevelSelectScreen: React.FC<Props> = ({
                   <Animated.View
                     style={[styles.progressFill, {
                       backgroundColor: world.accentColor,
-                      width: `${(completedCount / levelsInWorld) * 100}%`,
+                      width: `${worldProgress}%`,
                     }]}
                   />
                   {/* Glow on progress bar */}
@@ -320,7 +353,7 @@ export const LevelSelectScreen: React.FC<Props> = ({
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                     style={[styles.progressGlow, {
-                      width: `${(completedCount / levelsInWorld) * 100}%`,
+                      width: `${worldProgress}%`,
                     }]}
                   />
                 </View>
@@ -331,16 +364,15 @@ export const LevelSelectScreen: React.FC<Props> = ({
 
               {/* Level circles */}
               <View style={styles.levelRow}>
-                {Array.from({ length: levelsInWorld }).map((_, i) => {
-                  const globalIdx = firstLevel + i;
-                  const isUnlocked = globalIdx <= unlockedUpTo;
+                {levelIndexes.map((globalIdx, i) => {
+                  const isUnlocked = isLevelUnlocked(globalIdx);
                   const stars = levelStars[globalIdx] ?? 0;
                   const isCurrent = globalIdx === nextLevelIndex;
                   const level = LEVELS[globalIdx];
 
                   return (
                     <TouchableOpacity
-                      key={i}
+                      key={level.id}
                       style={styles.levelCircleWrapper}
                       onPress={() => {
                         if (!isUnlocked) return;
@@ -518,19 +550,47 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(60,30,10,0.85)',
     borderRadius: 24,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    gap: 6,
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.15)',
   },
-  bobaIcon: {
-    width: 26,
-    height: 26,
+  energyCounter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(60,30,10,0.85)',
+    borderRadius: 24,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    gap: 7,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  energyIcon: {
+    width: 25,
+    height: 25,
+  },
+  energyText: {
+    color: '#FFF',
+    fontSize: 15,
+    lineHeight: 17,
+    fontWeight: '900',
+  },
+  energySub: {
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: 9,
+    lineHeight: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  bobaIconText: {
+    fontSize: 17,
+    lineHeight: 20,
   },
   bobaText: {
     color: '#FFF',
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '800',
   },
   settingsBtn: {

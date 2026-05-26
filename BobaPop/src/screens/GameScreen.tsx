@@ -19,13 +19,15 @@ import { HUD } from '../components/HUD';
 import { GAME_WIDTH, GAME_HEIGHT } from '../constants/gameConfig';
 import { LEVELS } from '../game/levels';
 import { WORLDS } from '../constants/themes';
+import { GameState } from '../game/types';
 
 interface Props {
   levelIndex: number;
   onLevelComplete: (score: number, bricksPopped: number, lives: number) => void;
-  onGameOver: (score: number) => void;
+  onGameOver: (score: number, failedState: GameState) => void;
   onBack: () => void;
   initialLives?: number;
+  resumeState?: GameState;
   seenOnboarding: Record<string, boolean>;
   onMarkOnboardingSeen: (key: string) => void;
 }
@@ -42,6 +44,7 @@ export const GameScreen: React.FC<Props> = ({
   onGameOver,
   onBack,
   initialLives,
+  resumeState,
   seenOnboarding,
   onMarkOnboardingSeen,
 }) => {
@@ -53,7 +56,7 @@ export const GameScreen: React.FC<Props> = ({
     resetLevel,
     pauseGame,
     resumeGame,
-  } = useGameLoop(levelIndex, initialLives);
+  } = useGameLoop(levelIndex, initialLives, resumeState);
 
   const level = LEVELS[levelIndex];
   const displayLevel = levelIndex + 1;
@@ -166,10 +169,11 @@ export const GameScreen: React.FC<Props> = ({
       return () => clearTimeout(timer);
     }
     if (gameState.phase === 'lost') {
-      const timer = setTimeout(() => onGameOver(gameState.score), 800);
+      const failedState = gameState;
+      const timer = setTimeout(() => onGameOver(failedState.score, failedState), 800);
       return () => clearTimeout(timer);
     }
-  }, [gameState.phase]);
+  }, [gameState, onGameOver, onLevelComplete]);
 
   return (
     <View style={styles.root}>

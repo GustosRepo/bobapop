@@ -1,6 +1,5 @@
 import { Brick, PowerUpType } from '../game/types';
 import {
-  BRICK_COLS,
   BOSS_HEIGHT,
   BRICK_PADDING,
 } from '../constants/gameConfig';
@@ -22,21 +21,24 @@ function buildBricks(
   powerUpChance: number,
   rowOffset = 0,
   guaranteedPowerUps: GuaranteedPowerUp[] = [],
+  levelIndex = 0,
 ): Omit<Brick, 'id'>[] {
   const bricks: Omit<Brick, 'id'>[] = [];
   grid.forEach((row, rIdx) => {
     row.forEach((cell, cIdx) => {
       if (cell === 0) return;
       const guaranteed = guaranteedPowerUps.find((p) => p.row === rIdx && p.col === cIdx);
-      const hasPowerUp = Math.random() < powerUpChance;
       const powerUps: PowerUpType[] = ['multi_ball', 'wide_paddle', 'sticky_paddle', 'slow_motion'];
+      const roll = deterministicRoll(levelIndex, rIdx, cIdx, 0);
+      const typeRoll = deterministicRoll(levelIndex, rIdx, cIdx, 1);
+      const hasPowerUp = roll < powerUpChance;
       bricks.push({
         col: cIdx,
         row: rIdx,
         hp: cell,
         maxHp: cell,
         active: true,
-        powerUp: guaranteed?.type ?? (hasPowerUp ? powerUps[Math.floor(Math.random() * powerUps.length)] : undefined),
+        powerUp: guaranteed?.type ?? (hasPowerUp ? powerUps[Math.floor(typeRoll * powerUps.length)] : undefined),
         rowOffset,
       });
     });
@@ -44,7 +46,19 @@ function buildBricks(
   return bricks;
 }
 
+function deterministicRoll(levelIndex: number, row: number, col: number, salt: number): number {
+  let seed = (levelIndex + 1) * 73856093
+    ^ (row + 1) * 19349663
+    ^ (col + 1) * 83492791
+    ^ (salt + 1) * 2654435761;
+  seed >>>= 0;
+  seed = Math.imul(seed ^ (seed >>> 16), 2246822507) >>> 0;
+  seed = Math.imul(seed ^ (seed >>> 13), 3266489909) >>> 0;
+  return ((seed ^ (seed >>> 16)) >>> 0) / 4294967296;
+}
+
 export interface LevelDef {
+  id: string;
   worldIndex: number; // 0-3
   levelInWorld: number; // 1-5
   grid: Grid;
@@ -220,29 +234,29 @@ const tt5: Grid = [
 
 export const LEVELS: LevelDef[] = [
   // World 0 – Brown Sugar (easy: slow ball, wide paddle, generous power-ups)
-  { worldIndex: 0, levelInWorld: 1, grid: bs1, ballSpeed: 6,    paddleWidth: 95, powerUpChance: 0.24, isBoss: false, bossHp: 0,  bossSpeed: 0   },
-  { worldIndex: 0, levelInWorld: 2, grid: bs2, ballSpeed: 6.5,  paddleWidth: 93, powerUpChance: 0.23, isBoss: false, bossHp: 0,  bossSpeed: 0   },
-  { worldIndex: 0, levelInWorld: 3, grid: bs3, ballSpeed: 7,    paddleWidth: 90, powerUpChance: 0.22, guaranteedPowerUps: [{ row: 1, col: 3, type: 'multi_ball' }], isBoss: false, bossHp: 0,  bossSpeed: 0   },
-  { worldIndex: 0, levelInWorld: 4, grid: bs4, ballSpeed: 7.5,  paddleWidth: 88, powerUpChance: 0.21, isBoss: false, bossHp: 0,  bossSpeed: 0   },
-  { worldIndex: 0, levelInWorld: 5, grid: bs5, ballSpeed: 8,    paddleWidth: 86, powerUpChance: 0.20, isBoss: true,  bossHp: 12, bossSpeed: 1.5 },
+  { id: 'brown_sugar_1', worldIndex: 0, levelInWorld: 1, grid: bs1, ballSpeed: 6,    paddleWidth: 95, powerUpChance: 0.24, isBoss: false, bossHp: 0,  bossSpeed: 0   },
+  { id: 'brown_sugar_2', worldIndex: 0, levelInWorld: 2, grid: bs2, ballSpeed: 6.5,  paddleWidth: 93, powerUpChance: 0.23, isBoss: false, bossHp: 0,  bossSpeed: 0   },
+  { id: 'brown_sugar_3', worldIndex: 0, levelInWorld: 3, grid: bs3, ballSpeed: 7,    paddleWidth: 90, powerUpChance: 0.22, guaranteedPowerUps: [{ row: 1, col: 3, type: 'multi_ball' }], isBoss: false, bossHp: 0,  bossSpeed: 0   },
+  { id: 'brown_sugar_4', worldIndex: 0, levelInWorld: 4, grid: bs4, ballSpeed: 7.5,  paddleWidth: 88, powerUpChance: 0.21, isBoss: false, bossHp: 0,  bossSpeed: 0   },
+  { id: 'brown_sugar_boss', worldIndex: 0, levelInWorld: 5, grid: bs5, ballSpeed: 8,    paddleWidth: 86, powerUpChance: 0.20, isBoss: true,  bossHp: 12, bossSpeed: 1.5 },
   // World 1 – Matcha (medium)
-  { worldIndex: 1, levelInWorld: 1, grid: ma1, ballSpeed: 8.5,  paddleWidth: 84, powerUpChance: 0.19, isBoss: false, bossHp: 0,  bossSpeed: 0   },
-  { worldIndex: 1, levelInWorld: 2, grid: ma2, ballSpeed: 9,    paddleWidth: 82, powerUpChance: 0.18, isBoss: false, bossHp: 0,  bossSpeed: 0   },
-  { worldIndex: 1, levelInWorld: 3, grid: ma3, ballSpeed: 9.5,  paddleWidth: 80, powerUpChance: 0.18, isBoss: false, bossHp: 0,  bossSpeed: 0   },
-  { worldIndex: 1, levelInWorld: 4, grid: ma4, ballSpeed: 10,   paddleWidth: 78, powerUpChance: 0.17, isBoss: false, bossHp: 0,  bossSpeed: 0   },
-  { worldIndex: 1, levelInWorld: 5, grid: ma5, ballSpeed: 10.5, paddleWidth: 76, powerUpChance: 0.16, isBoss: true,  bossHp: 16, bossSpeed: 2.0 },
+  { id: 'matcha_1', worldIndex: 1, levelInWorld: 1, grid: ma1, ballSpeed: 8.5,  paddleWidth: 84, powerUpChance: 0.19, isBoss: false, bossHp: 0,  bossSpeed: 0   },
+  { id: 'matcha_2', worldIndex: 1, levelInWorld: 2, grid: ma2, ballSpeed: 9,    paddleWidth: 82, powerUpChance: 0.18, isBoss: false, bossHp: 0,  bossSpeed: 0   },
+  { id: 'matcha_3', worldIndex: 1, levelInWorld: 3, grid: ma3, ballSpeed: 9.5,  paddleWidth: 80, powerUpChance: 0.18, isBoss: false, bossHp: 0,  bossSpeed: 0   },
+  { id: 'matcha_4', worldIndex: 1, levelInWorld: 4, grid: ma4, ballSpeed: 10,   paddleWidth: 78, powerUpChance: 0.17, isBoss: false, bossHp: 0,  bossSpeed: 0   },
+  { id: 'matcha_boss', worldIndex: 1, levelInWorld: 5, grid: ma5, ballSpeed: 10.5, paddleWidth: 76, powerUpChance: 0.16, isBoss: true,  bossHp: 16, bossSpeed: 2.0 },
   // World 2 – Taro (hard)
-  { worldIndex: 2, levelInWorld: 1, grid: ta1, ballSpeed: 11,   paddleWidth: 74, powerUpChance: 0.16, isBoss: false, bossHp: 0,  bossSpeed: 0   },
-  { worldIndex: 2, levelInWorld: 2, grid: ta2, ballSpeed: 11.5, paddleWidth: 72, powerUpChance: 0.15, isBoss: false, bossHp: 0,  bossSpeed: 0   },
-  { worldIndex: 2, levelInWorld: 3, grid: ta3, ballSpeed: 12,   paddleWidth: 70, powerUpChance: 0.15, isBoss: false, bossHp: 0,  bossSpeed: 0   },
-  { worldIndex: 2, levelInWorld: 4, grid: ta4, ballSpeed: 12.5, paddleWidth: 68, powerUpChance: 0.14, isBoss: false, bossHp: 0,  bossSpeed: 0   },
-  { worldIndex: 2, levelInWorld: 5, grid: ta5, ballSpeed: 13,   paddleWidth: 66, powerUpChance: 0.13, isBoss: true,  bossHp: 20, bossSpeed: 2.5 },
+  { id: 'taro_1', worldIndex: 2, levelInWorld: 1, grid: ta1, ballSpeed: 11,   paddleWidth: 74, powerUpChance: 0.16, isBoss: false, bossHp: 0,  bossSpeed: 0   },
+  { id: 'taro_2', worldIndex: 2, levelInWorld: 2, grid: ta2, ballSpeed: 11.5, paddleWidth: 72, powerUpChance: 0.15, isBoss: false, bossHp: 0,  bossSpeed: 0   },
+  { id: 'taro_3', worldIndex: 2, levelInWorld: 3, grid: ta3, ballSpeed: 12,   paddleWidth: 70, powerUpChance: 0.15, isBoss: false, bossHp: 0,  bossSpeed: 0   },
+  { id: 'taro_4', worldIndex: 2, levelInWorld: 4, grid: ta4, ballSpeed: 12.5, paddleWidth: 68, powerUpChance: 0.14, isBoss: false, bossHp: 0,  bossSpeed: 0   },
+  { id: 'taro_boss', worldIndex: 2, levelInWorld: 5, grid: ta5, ballSpeed: 13,   paddleWidth: 66, powerUpChance: 0.13, isBoss: true,  bossHp: 20, bossSpeed: 2.5 },
   // World 3 – Thai Tea (expert)
-  { worldIndex: 3, levelInWorld: 1, grid: tt1, ballSpeed: 13,   paddleWidth: 64, powerUpChance: 0.13, isBoss: false, bossHp: 0,  bossSpeed: 0   },
-  { worldIndex: 3, levelInWorld: 2, grid: tt2, ballSpeed: 13.5, paddleWidth: 62, powerUpChance: 0.12, isBoss: false, bossHp: 0,  bossSpeed: 0   },
-  { worldIndex: 3, levelInWorld: 3, grid: tt3, ballSpeed: 14,   paddleWidth: 60, powerUpChance: 0.12, isBoss: false, bossHp: 0,  bossSpeed: 0   },
-  { worldIndex: 3, levelInWorld: 4, grid: tt4, ballSpeed: 14,   paddleWidth: 58, powerUpChance: 0.11, isBoss: false, bossHp: 0,  bossSpeed: 0   },
-  { worldIndex: 3, levelInWorld: 5, grid: tt5, ballSpeed: 14,   paddleWidth: 56, powerUpChance: 0.10, isBoss: true,  bossHp: 24, bossSpeed: 3.0 },
+  { id: 'thai_tea_1', worldIndex: 3, levelInWorld: 1, grid: tt1, ballSpeed: 13,   paddleWidth: 64, powerUpChance: 0.13, isBoss: false, bossHp: 0,  bossSpeed: 0   },
+  { id: 'thai_tea_2', worldIndex: 3, levelInWorld: 2, grid: tt2, ballSpeed: 13.5, paddleWidth: 62, powerUpChance: 0.12, isBoss: false, bossHp: 0,  bossSpeed: 0   },
+  { id: 'thai_tea_3', worldIndex: 3, levelInWorld: 3, grid: tt3, ballSpeed: 14,   paddleWidth: 60, powerUpChance: 0.12, isBoss: false, bossHp: 0,  bossSpeed: 0   },
+  { id: 'thai_tea_4', worldIndex: 3, levelInWorld: 4, grid: tt4, ballSpeed: 14,   paddleWidth: 58, powerUpChance: 0.11, isBoss: false, bossHp: 0,  bossSpeed: 0   },
+  { id: 'thai_tea_boss', worldIndex: 3, levelInWorld: 5, grid: tt5, ballSpeed: 14,   paddleWidth: 56, powerUpChance: 0.10, isBoss: true,  bossHp: 24, bossSpeed: 3.0 },
 ];
 
 let _brickIdCounter = 0;
@@ -250,7 +264,7 @@ export function buildLevelBricks(levelIndex: number): Brick[] {
   const level = LEVELS[levelIndex];
   if (!level) return [];
   const rowOffset = level.isBoss ? BOSS_ROW_OFFSET : 0;
-  return buildBricks(level.grid, level.powerUpChance, rowOffset, level.guaranteedPowerUps).map((b) => ({
+  return buildBricks(level.grid, level.powerUpChance, rowOffset, level.guaranteedPowerUps, levelIndex).map((b) => ({
     ...b,
     id: `brick_${++_brickIdCounter}_${b.col}_${b.row}`,
   }));

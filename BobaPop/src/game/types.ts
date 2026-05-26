@@ -26,6 +26,7 @@ export interface Ball {
 export interface Paddle {
   x: number;
   width: number;
+  baseWidth: number;
 }
 
 export interface Particle {
@@ -69,6 +70,11 @@ export type HapticEvent =
   | 'game_won'
   | 'game_lost';
 
+export type TelemetryEvent =
+  | { type: 'life_lost'; livesRemaining: number }
+  | { type: 'power_up_collected'; powerUp: PowerUpType }
+  | { type: 'boss_enraged' };
+
 export interface GameState {
   balls: Ball[];
   paddle: Paddle;
@@ -81,5 +87,6 @@ export interface GameState {
   stickyCount: number; // how many more times sticky can catch
   boss?: BossBrick;
   hapticEvents?: HapticEvent[];
+  telemetryEvents?: TelemetryEvent[];
   bricksPopped: number; // total bricks destroyed this level run
 }

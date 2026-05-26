@@ -59,7 +59,6 @@ export function setHapticsEnabled(v: boolean) { _hapticsEnabled = v; }
 export function useSound() {
   const playSound = useCallback((event: SoundEvent) => {
     if (!_soundEnabled) return;
-    if (__DEV__) console.log(`[Sound] ${event}`);
     const player = _soundPool[event];
     if (player) {
       player.seekTo(0);

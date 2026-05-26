@@ -12,7 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { IMAGES } from '../assets/images';
 import {
   PLUS_BENEFITS,
-  PLUS_PLANS,
+  PlusPlan,
   PlusPlanId,
   PRIVACY_POLICY_URL,
   TERMS_URL,
@@ -21,6 +21,9 @@ import {
 interface Props {
   visible: boolean;
   plusActive: boolean;
+  plans: PlusPlan[];
+  busyPlanId: PlusPlanId | null;
+  storeMessage: string | null;
   onClose: () => void;
   onSelectPlan: (planId: PlusPlanId) => void;
   onRestore: () => void;
@@ -29,6 +32,9 @@ interface Props {
 export const PlusPaywallModal: React.FC<Props> = ({
   visible,
   plusActive,
+  plans,
+  busyPlanId,
+  storeMessage,
   onClose,
   onSelectPlan,
   onRestore,
@@ -65,11 +71,16 @@ export const PlusPaywallModal: React.FC<Props> = ({
             </View>
           ) : (
             <View style={styles.planList}>
-              {PLUS_PLANS.map((plan) => (
+              {plans.map((plan) => (
                 <TouchableOpacity
                   key={plan.id}
-                  style={[styles.planCard, plan.badge && styles.planCardFeatured]}
+                  style={[
+                    styles.planCard,
+                    plan.badge && styles.planCardFeatured,
+                    busyPlanId !== null && styles.planCardDisabled,
+                  ]}
                   onPress={() => onSelectPlan(plan.id)}
+                  disabled={busyPlanId !== null}
                   activeOpacity={0.86}
                 >
                   {plan.badge && (
@@ -82,12 +93,18 @@ export const PlusPaywallModal: React.FC<Props> = ({
                     {plan.savings && <Text style={styles.planSavings}>{plan.savings}</Text>}
                   </View>
                   <View style={styles.planPriceWrap}>
-                    <Text style={styles.planPrice}>{plan.price}</Text>
+                    <Text style={styles.planPrice}>
+                      {busyPlanId === plan.id ? 'Starting...' : plan.price}
+                    </Text>
                     <Text style={styles.planPeriod}>/{plan.period}</Text>
                   </View>
                 </TouchableOpacity>
               ))}
             </View>
+          )}
+
+          {storeMessage !== null && (
+            <Text style={styles.storeMessage}>{storeMessage}</Text>
           )}
 
           <TouchableOpacity style={styles.restoreBtn} onPress={onRestore} activeOpacity={0.8}>
@@ -220,6 +237,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#235B43',
     borderColor: '#FFD45C',
   },
+  planCardDisabled: {
+    opacity: 0.62,
+  },
   planBadge: {
     position: 'absolute',
     top: -10,
@@ -284,6 +304,13 @@ const styles = StyleSheet.create({
     marginTop: 14,
     paddingHorizontal: 14,
     paddingVertical: 8,
+  },
+  storeMessage: {
+    color: '#5B260A',
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginTop: 10,
   },
   restoreText: {
     color: '#4B210A',
