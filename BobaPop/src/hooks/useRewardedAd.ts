@@ -5,15 +5,41 @@ import mobileAds, {
   TestIds,
 } from 'react-native-google-mobile-ads';
 
-const FALLBACK_REWARDED_UNIT_ID = 'ca-app-pub-8863066373093222/9842491767';
-const USE_TEST_ADS = __DEV__ || process.env.EXPO_PUBLIC_ADMOB_USE_TEST_ADS === 'true';
-const REWARDED_UNIT_ID = USE_TEST_ADS
-  ? TestIds.REWARDED
-  : Platform.select({
-      ios: process.env.EXPO_PUBLIC_ADMOB_REWARDED_IOS_UNIT_ID,
-      android: process.env.EXPO_PUBLIC_ADMOB_REWARDED_ANDROID_UNIT_ID,
-      default: process.env.EXPO_PUBLIC_ADMOB_REWARDED_IOS_UNIT_ID,
-    }) || FALLBACK_REWARDED_UNIT_ID;
+const FALLBACK_ANDROID_REWARDED_UNIT_ID = 'ca-app-pub-8863066373093222/9842491767';
+const ALLOW_RELEASE_TEST_ADS = process.env.EXPO_PUBLIC_ALLOW_TEST_ADS_IN_RELEASE === 'true';
+const USE_TEST_ADS = __DEV__ || (
+  ALLOW_RELEASE_TEST_ADS && process.env.EXPO_PUBLIC_ADMOB_USE_TEST_ADS === 'true'
+);
+
+function isAdUnitId(value: string | undefined): value is string {
+  return /^ca-app-pub-\d+\/\d+$/.test(value ?? '');
+}
+
+function resolveRewardedUnitId() {
+  if (USE_TEST_ADS) return TestIds.REWARDED;
+
+  const configuredUnitId = Platform.select({
+    ios: process.env.EXPO_PUBLIC_ADMOB_REWARDED_IOS_UNIT_ID,
+    android: process.env.EXPO_PUBLIC_ADMOB_REWARDED_ANDROID_UNIT_ID,
+    default: process.env.EXPO_PUBLIC_ADMOB_REWARDED_IOS_UNIT_ID,
+  });
+
+  if (isAdUnitId(configuredUnitId)) return configuredUnitId;
+
+  if (configuredUnitId) {
+    console.warn(
+      `[ads] Ignoring invalid rewarded ad unit ID for ${Platform.OS}. ` +
+        'Rewarded ad unit IDs must use ca-app-pub-.../... format.',
+    );
+  }
+
+  if (Platform.OS === 'android') return FALLBACK_ANDROID_REWARDED_UNIT_ID;
+
+  console.warn('[ads] Missing valid iOS rewarded ad unit ID. Rewarded ads will stay disabled.');
+  return null;
+}
+
+const REWARDED_UNIT_ID = resolveRewardedUnitId();
 
 const REQUEST_OPTIONS = { requestNonPersonalizedAdsOnly: true };
 export type RewardedAdResult = 'watched' | 'not_available' | 'skipped' | 'closed' | 'timeout' | 'error';
@@ -21,7 +47,7 @@ const AD_RESULT_TIMEOUT_MS = 90_000;
 
 export function useRewardedAd() {
   const [initialized, setInitialized] = useState(false);
-  const { isLoaded, isEarnedReward, isClosed, load, show } = useAdMobRewardedAd(
+  const { isLoaded, isEarnedReward, isClosed, error, load, show } = useAdMobRewardedAd(
     REWARDED_UNIT_ID,
     REQUEST_OPTIONS,
   );
@@ -48,6 +74,12 @@ export function useRewardedAd() {
   useEffect(() => {
     if (initialized && isClosed) load();
   }, [initialized, isClosed, load]);
+
+  useEffect(() => {
+    if (error) {
+      console.warn(`[ads] Rewarded ad failed to load: ${error.message}`);
+    }
+  }, [error]);
 
   // Pending reward callback — fired when isEarnedReward flips true
   const pendingReward = useRef<((result: RewardedAdResult) => void) | null>(null);
@@ -114,7 +146,7 @@ export function useRewardedAd() {
         load();
       }
     },
-    [isLoaded, load, settleReward, show],
+    [initialized, isLoaded, load, settleReward, show],
   );
 
   return { isLoaded, showAd };
