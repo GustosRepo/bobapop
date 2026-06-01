@@ -107,7 +107,7 @@ export default function App() {
     }
   }, [loading, seenOnboarding.app_intro]);
 
-  const { isLoaded: rewardedAdLoaded, showAd } = useRewardedAd();
+  const { isLoaded: rewardedAdLoaded, status: rewardedAdStatus, showAd } = useRewardedAd();
   const markPlusActive = useCallback(() => {
     setAdsRemovedEntitlement(true);
   }, [setAdsRemovedEntitlement]);
@@ -353,6 +353,7 @@ export default function App() {
           adsRemoved={adsRemoved}
           continueOffer={continueOffer}
           adAvailable={adsRemoved || rewardedAdLoaded}
+          adUnavailable={!adsRemoved && rewardedAdStatus === 'unavailable'}
           energyLives={energyLives}
           maxEnergyLives={maxEnergyLives}
           nextEnergyInMs={nextEnergyInMs}

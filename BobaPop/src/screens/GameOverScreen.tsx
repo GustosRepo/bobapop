@@ -20,6 +20,7 @@ interface Props {
   adsRemoved: boolean;
   continueOffer: ContinueOffer;
   adAvailable: boolean;
+  adUnavailable: boolean;
   energyLives: number;
   maxEnergyLives: number;
   nextEnergyInMs: number;
@@ -38,6 +39,7 @@ export const GameOverScreen: React.FC<Props> = ({
   adsRemoved,
   continueOffer,
   adAvailable,
+  adUnavailable,
   energyLives,
   maxEnergyLives,
   nextEnergyInMs,
@@ -64,15 +66,19 @@ export const GameOverScreen: React.FC<Props> = ({
   const canRetryFresh = energyLives > 0;
   const nextEnergyMinutes = Math.ceil(nextEnergyInMs / 60000);
   const waitingForDelay = secondsRemaining > 0;
-  const waitingForAd = hasContinue && !adsRemoved && !adAvailable;
-  const canPressContinue = hasContinue && !waitingForDelay && !waitingForAd;
+  const waitingForAd = hasContinue && !adsRemoved && !adAvailable && !adUnavailable;
+  const canPressContinue = hasContinue && !waitingForDelay && !waitingForAd && !adUnavailable;
   const continueButtonText = waitingForDelay
     ? `Available in ${secondsRemaining}s`
+    : adUnavailable
+    ? 'Ad unavailable'
     : waitingForAd
     ? 'Ad loading...'
     : continueOffer.buttonText;
   const continueSubText = hasContinue
-    ? continueOffer.subtitle
+    ? adUnavailable
+      ? 'Retry or try again later.'
+      : continueOffer.subtitle
     : continueOffer.subtitle;
 
   return (
