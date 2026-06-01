@@ -1,9 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
-import mobileAds, {
-  useRewardedAd as useAdMobRewardedAd,
-  TestIds,
-} from 'react-native-google-mobile-ads';
+
+// react-native-google-mobile-ads is a native module — not available in Expo Go.
+// Gracefully disable ads instead of crashing when the module is missing.
+let mobileAds: typeof import('react-native-google-mobile-ads').default;
+let useAdMobRewardedAd: typeof import('react-native-google-mobile-ads').useRewardedAd;
+let TestIds: typeof import('react-native-google-mobile-ads').TestIds;
+let nativeModuleAvailable = false;
+try {
+  const adsModule = require('react-native-google-mobile-ads');
+  mobileAds = adsModule.default;
+  useAdMobRewardedAd = adsModule.useRewardedAd;
+  TestIds = adsModule.TestIds;
+  nativeModuleAvailable = true;
+} catch {
+  // Running in Expo Go or an environment without the native module.
+}
 
 const FALLBACK_ANDROID_REWARDED_UNIT_ID = 'ca-app-pub-8863066373093222/9842491767';
 const ALLOW_RELEASE_TEST_ADS = process.env.EXPO_PUBLIC_ALLOW_TEST_ADS_IN_RELEASE === 'true';
@@ -39,7 +51,7 @@ function resolveRewardedUnitId() {
   return null;
 }
 
-const REWARDED_UNIT_ID = resolveRewardedUnitId();
+const REWARDED_UNIT_ID = nativeModuleAvailable ? resolveRewardedUnitId() : null;
 const ADS_CONFIGURED = REWARDED_UNIT_ID !== null;
 
 const REQUEST_OPTIONS = { requestNonPersonalizedAdsOnly: true };
@@ -47,15 +59,19 @@ export type RewardedAdResult = 'watched' | 'not_available' | 'skipped' | 'closed
 export type RewardedAdStatus = 'loading' | 'ready' | 'unavailable';
 const AD_RESULT_TIMEOUT_MS = 90_000;
 const LOAD_RETRY_DELAYS_MS = [1_000, 3_000, 8_000, 15_000, 30_000];
+const LOAD_GIVE_UP_MS = 15_000;
 
 export function useRewardedAd() {
   const [initialized, setInitialized] = useState(false);
   const [initFailed, setInitFailed] = useState(false);
   const [loadRetryAttempt, setLoadRetryAttempt] = useState(0);
-  const { isLoaded, isEarnedReward, isClosed, error, load, show } = useAdMobRewardedAd(
-    REWARDED_UNIT_ID ?? TestIds.REWARDED,
-    REQUEST_OPTIONS,
-  );
+  const [loadTimedOut, setLoadTimedOut] = useState(false);
+  const loadGiveUpTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const stubAdHook = { isLoaded: false, isEarnedReward: false, isClosed: false, error: null as Error | null, load: () => {}, show: () => {} };
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const adHook = nativeModuleAvailable ? useAdMobRewardedAd(REWARDED_UNIT_ID ?? TestIds.REWARDED, REQUEST_OPTIONS) : stubAdHook;
+  const { isLoaded, isEarnedReward, isClosed, error, load, show } = adHook;
   const loadRetryTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Initialize once before requesting ads.
@@ -68,6 +84,11 @@ export function useRewardedAd() {
         if (cancelled) return;
         setInitFailed(false);
         setInitialized(true);
+        setLoadTimedOut(false);
+        loadGiveUpTimeout.current = setTimeout(() => {
+          loadGiveUpTimeout.current = null;
+          setLoadTimedOut(true);
+        }, LOAD_GIVE_UP_MS);
         load();
       })
       .catch(() => {
@@ -78,6 +99,10 @@ export function useRewardedAd() {
       });
     return () => {
       cancelled = true;
+      if (loadGiveUpTimeout.current) {
+        clearTimeout(loadGiveUpTimeout.current);
+        loadGiveUpTimeout.current = null;
+      }
     };
   }, [load]);
 
@@ -116,6 +141,11 @@ export function useRewardedAd() {
     if (!isLoaded) return;
     clearLoadRetryTimeout();
     setLoadRetryAttempt(0);
+    setLoadTimedOut(false);
+    if (loadGiveUpTimeout.current) {
+      clearTimeout(loadGiveUpTimeout.current);
+      loadGiveUpTimeout.current = null;
+    }
   }, [clearLoadRetryTimeout, isLoaded]);
 
   // Pending reward callback — fired when isEarnedReward flips true
@@ -191,7 +221,7 @@ export function useRewardedAd() {
     [initialized, isLoaded, load, settleReward, show],
   );
 
-  const status: RewardedAdStatus = !ADS_CONFIGURED || initFailed
+  const status: RewardedAdStatus = !ADS_CONFIGURED || initFailed || loadTimedOut
     ? 'unavailable'
     : isLoaded
     ? 'ready'
