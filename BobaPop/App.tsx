@@ -55,7 +55,7 @@ function livesToStars(lives: number): number {
 export default function App() {
   const levelIds = useMemo(() => LEVELS.map((level) => level.id), []);
   const [screen, setScreen] = useState<Screen>({ name: 'select' });
-  const [nextRunId, setNextRunId] = useState(1);
+  const nextRunIdRef = useRef(1);
   const [runContinues, setRunContinues] = useState<Record<number, number>>({});
   const [plusPaywallVisible, setPlusPaywallVisible] = useState(false);
   const [
@@ -97,8 +97,8 @@ export default function App() {
   const {
     loading, unlockedUpTo, levelStars, levelHighScores, totalBobas,
     seenWorlds, soundEnabled, hapticsEnabled, adsRemoved, seenOnboarding,
-    energyLives, maxEnergyLives, nextEnergyInMs,
-    recordLevelComplete, markWorldSeen, markOnboardingSeen, updateSettings, setAdsRemovedEntitlement, isLevelUnlocked, spendEnergyLife,
+    energy, maxEnergy, nextEnergyInMs,
+    recordLevelComplete, markWorldSeen, markOnboardingSeen, updateSettings, setAdsRemovedEntitlement, isLevelUnlocked, spendEnergy,
   } = useSaveData(DEV_UNLOCK_ALL, levelIds);
 
   useEffect(() => {
@@ -157,19 +157,22 @@ export default function App() {
   }, [screenOpacity]);
 
   const startLevel = useCallback((levelIndex: number, initialLives?: number, runId?: number, resumeState?: GameState) => {
-    const resolvedRunId = runId ?? nextRunId;
+    if (levelIndex < 0 || levelIndex >= LEVELS.length) return;
+    if (runId === undefined && !isLevelUnlocked(levelIndex)) return;
+
+    const resolvedRunId = runId ?? nextRunIdRef.current;
     if (runId === undefined) {
-      if (!spendEnergyLife()) {
+      if (!spendEnergy()) {
         const minutes = Math.ceil(nextEnergyInMs / 60000);
-        Alert.alert('Out of lives', minutes > 0 ? `Next life in ${minutes} minute${minutes === 1 ? '' : 's'}.` : 'A life will be ready soon.');
+        Alert.alert('Out of energy', minutes > 0 ? `Next energy in ${minutes} minute${minutes === 1 ? '' : 's'}.` : 'Energy will be ready soon.');
         return;
       }
-      setNextRunId((id) => id + 1);
+      nextRunIdRef.current += 1;
       setRunContinues((prev) => ({ ...prev, [resolvedRunId]: 0 }));
     }
     trackLevelStart(levelIndex, resolvedRunId);
     navigateTo({ name: 'game', levelIndex, runId: resolvedRunId, initialLives, resumeState });
-  }, [navigateTo, nextEnergyInMs, nextRunId, spendEnergyLife]);
+  }, [isLevelUnlocked, navigateTo, nextEnergyInMs, spendEnergy]);
 
   const handleSelectLevel = useCallback((index: number) => {
     if (index < 0 || index >= LEVELS.length || !isLevelUnlocked(index)) return;
@@ -292,8 +295,8 @@ export default function App() {
           soundEnabled={soundEnabled}
           hapticsEnabled={hapticsEnabled}
           plusActive={adsRemoved}
-          energyLives={energyLives}
-          maxEnergyLives={maxEnergyLives}
+          energy={energy}
+          maxEnergy={maxEnergy}
           nextEnergyInMs={nextEnergyInMs}
           onSelectLevel={handleSelectLevel}
           onUpdateSettings={updateSettings}
@@ -309,11 +312,15 @@ export default function App() {
           levelIndex={screen.levelIndex}
           initialLives={screen.initialLives}
           resumeState={screen.resumeState}
+          energy={energy}
+          maxEnergy={maxEnergy}
+          nextEnergyInMs={nextEnergyInMs}
           seenOnboarding={seenOnboarding}
           onMarkOnboardingSeen={markOnboardingSeen}
           onLevelComplete={handleLevelComplete}
           onGameOver={handleGameOver}
           onBack={() => navigateTo({ name: 'select' })}
+          onRestart={() => startLevel(screen.levelIndex)}
         />
       </>
     );
@@ -332,7 +339,7 @@ export default function App() {
           theme={worldTheme}
           isLast={isLast}
           isWorldBoss={isWorldBoss}
-          onNext={() => startLevel(levelIndex + 1)}
+          onNext={() => handleSelectLevel(levelIndex + 1)}
           onReplay={() => startLevel(levelIndex)}
           onMenu={() => navigateTo({ name: 'select' })}
         />
@@ -354,8 +361,8 @@ export default function App() {
           continueOffer={continueOffer}
           adAvailable={adsRemoved || rewardedAdLoaded}
           adUnavailable={!adsRemoved && rewardedAdStatus === 'unavailable'}
-          energyLives={energyLives}
-          maxEnergyLives={maxEnergyLives}
+          energy={energy}
+          maxEnergy={maxEnergy}
           nextEnergyInMs={nextEnergyInMs}
           onContinue={handleContinue}
           onRetry={handleRetryFromGameOver}

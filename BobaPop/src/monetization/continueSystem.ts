@@ -49,19 +49,6 @@ export function getContinueOffer(
   const levelNumber = levelIndex + 1;
   const continueNumber = continuesUsed + 1;
 
-  if (adsRemoved) {
-    return {
-      canShow: true,
-      reason: 'ads_removed',
-      continueNumber,
-      rewardLives: 2,
-      delaySeconds: 0,
-      title: 'Pop back in?',
-      subtitle: 'Continue with 2 lives.',
-      buttonText: 'Continue',
-    };
-  }
-
   if (levelNumber <= policy.noAdsThroughLevel) {
     return {
       canShow: false,
@@ -70,8 +57,8 @@ export function getContinueOffer(
       rewardLives: 0,
       delaySeconds: 0,
       title: 'Almost had it!',
-      subtitle: 'Retry anytime. Ads unlock after Level 3.',
-      buttonText: 'Watch Ad',
+      subtitle: 'Retry anytime. Continues unlock after Level 3.',
+      buttonText: adsRemoved ? 'Continue' : 'Watch Ad',
     };
   }
 
@@ -88,11 +75,24 @@ export function getContinueOffer(
       delaySeconds: 0,
       title: 'Fresh cup?',
       subtitle: 'Restart the level or head back to choose another one.',
-      buttonText: 'Watch Ad',
+      buttonText: adsRemoved ? 'Continue' : 'Watch Ad',
     };
   }
 
   const offer = policy.offers[Math.min(continuesUsed, policy.offers.length - 1)];
+  if (adsRemoved) {
+    return {
+      canShow: true,
+      reason: 'ads_removed',
+      continueNumber,
+      rewardLives: offer.rewardLives,
+      delaySeconds: 0,
+      title: continueNumber === 1 ? 'Pop back in?' : 'Need another boost?',
+      subtitle: `Continue with ${offer.rewardLives} ${offer.rewardLives === 1 ? 'life' : 'lives'}.`,
+      buttonText: 'Continue',
+    };
+  }
+
   return {
     canShow: true,
     reason: 'available',

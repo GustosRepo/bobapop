@@ -29,8 +29,8 @@ interface Props {
   soundEnabled: boolean;
   hapticsEnabled: boolean;
   plusActive: boolean;
-  energyLives: number;
-  maxEnergyLives: number;
+  energy: number;
+  maxEnergy: number;
   nextEnergyInMs: number;
   onSelectLevel: (index: number) => void;
   onUpdateSettings: (sound: boolean, haptics: boolean) => void;
@@ -63,8 +63,8 @@ export const LevelSelectScreen: React.FC<Props> = ({
   soundEnabled,
   hapticsEnabled,
   plusActive,
-  energyLives,
-  maxEnergyLives,
+  energy,
+  maxEnergy,
   nextEnergyInMs,
   onSelectLevel,
   onUpdateSettings,
@@ -188,11 +188,13 @@ export const LevelSelectScreen: React.FC<Props> = ({
           <Text style={styles.badgeLevel}>{playerLevel.level}</Text>
         </TouchableOpacity>
 
-        {/* Energy Lives */}
+        {/* Energy */}
         <View style={styles.energyCounter}>
-          <Image source={IMAGES.lifeIcon} style={styles.energyIcon} resizeMode="contain" />
+          <View style={styles.energyGlyph}>
+            <Text style={styles.energyGlyphText}>E</Text>
+          </View>
           <View>
-            <Text style={styles.energyText}>{energyLives}/{maxEnergyLives}</Text>
+            <Text style={styles.energyText}>Energy {energy}/{maxEnergy}</Text>
             <Text style={styles.energySub}>
               {nextEnergyInMs > 0 ? `${nextEnergyMinutes}m` : 'Full'}
             </Text>
@@ -248,9 +250,9 @@ export const LevelSelectScreen: React.FC<Props> = ({
             {nextLevelIndex === 0 ? 'START' : 'CONTINUE'}
           </Text>
           <Text style={styles.continueBtnSub}>
-            {energyLives > 0
-              ? `Level ${nextLevelIndex + 1} - Lives ${energyLives}/${maxEnergyLives}`
-              : `Next life in ${nextEnergyMinutes}m`}
+            {energy > 0
+              ? `Level ${nextLevelIndex + 1} - Energy ${energy}/${maxEnergy}`
+              : `Next energy in ${nextEnergyMinutes}m`}
           </Text>
         </TouchableOpacity>
 
@@ -567,9 +569,19 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.15)',
   },
-  energyIcon: {
+  energyGlyph: {
     width: 25,
     height: 25,
+    borderRadius: 13,
+    backgroundColor: '#FFD45C',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  energyGlyphText: {
+    color: '#5B260A',
+    fontSize: 14,
+    lineHeight: 16,
+    fontWeight: '900',
   },
   energyText: {
     color: '#FFF',

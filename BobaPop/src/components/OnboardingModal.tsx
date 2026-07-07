@@ -64,10 +64,10 @@ const SLIDES: Slide[] = [
     supportingArt: IMAGES.mascotExcited,
   },
   {
-    eyebrow: 'Lives',
+    eyebrow: 'Energy',
     title: 'Fresh tries refill',
-    body: 'Starting or retrying spends one life. Ads continue the same run without spending one.',
-    art: IMAGES.lifeIcon,
+    body: 'Starting or retrying spends Energy. Ads continue the same run with extra lives.',
+    art: IMAGES.effectBurst,
     accent: '#B85B16',
     supportingArt: IMAGES.mascotExcited,
   },

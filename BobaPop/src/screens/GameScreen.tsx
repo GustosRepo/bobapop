@@ -26,8 +26,12 @@ interface Props {
   onLevelComplete: (score: number, bricksPopped: number, lives: number) => void;
   onGameOver: (score: number, failedState: GameState) => void;
   onBack: () => void;
+  onRestart: () => void;
   initialLives?: number;
   resumeState?: GameState;
+  energy: number;
+  maxEnergy: number;
+  nextEnergyInMs: number;
   seenOnboarding: Record<string, boolean>;
   onMarkOnboardingSeen: (key: string) => void;
 }
@@ -43,8 +47,12 @@ export const GameScreen: React.FC<Props> = ({
   onLevelComplete,
   onGameOver,
   onBack,
+  onRestart,
   initialLives,
   resumeState,
+  energy,
+  maxEnergy,
+  nextEnergyInMs,
   seenOnboarding,
   onMarkOnboardingSeen,
 }) => {
@@ -53,7 +61,6 @@ export const GameScreen: React.FC<Props> = ({
     worldTheme,
     launchBall,
     movePaddle,
-    resetLevel,
     pauseGame,
     resumeGame,
   } = useGameLoop(levelIndex, initialLives, resumeState);
@@ -61,6 +68,8 @@ export const GameScreen: React.FC<Props> = ({
   const level = LEVELS[levelIndex];
   const displayLevel = levelIndex + 1;
   const showLaunchHint = gameState.phase === 'idle' && levelIndex === 0 && !seenOnboarding.launch;
+  const nextEnergyMinutes = Math.ceil(nextEnergyInMs / 60000);
+  const canRestart = energy > 0;
 
   // ── Screen shake ──────────────────────────────────────────────────────────
   const shakeAnim = useRef(new Animated.Value(0)).current;
@@ -247,10 +256,19 @@ export const GameScreen: React.FC<Props> = ({
               <Text style={styles.modalBtnText}>Resume</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.modalBtn, { backgroundColor: worldTheme.paddleColor }]}
-              onPress={resetLevel}
+              style={[
+                styles.modalBtn,
+                !canRestart && styles.modalBtnDisabled,
+                { backgroundColor: worldTheme.paddleColor },
+              ]}
+              onPress={onRestart}
+              disabled={!canRestart}
             >
-              <Text style={styles.modalBtnText}>Restart</Text>
+              <Text style={styles.modalBtnText}>
+                {canRestart
+                  ? `Restart - Energy ${energy}/${maxEnergy}`
+                  : `Next energy in ${nextEnergyMinutes}m`}
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.backBtn} onPress={onBack}>
               <Text style={[styles.backText, { color: worldTheme.accentColor }]}>← Menu</Text>
@@ -359,6 +377,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 14,
     alignItems: 'center',
+  },
+  modalBtnDisabled: {
+    opacity: 0.55,
   },
   modalBtnText: {
     color: '#fff',

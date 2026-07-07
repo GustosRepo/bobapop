@@ -11,7 +11,8 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "check:levels": "node scripts/check-levels.js",
-    "preflight": "npm run typecheck && npm run check:levels && npm audit --audit-level=moderate"
+    "check:save-migrations": "node scripts/check-save-migrations.js",
+    "preflight": "npm run typecheck && npm run check:levels && npm run check:save-migrations && npm audit --audit-level=moderate"
   },
   "dependencies": {
     "@expo-google-fonts/nunito": "^0.4.2",

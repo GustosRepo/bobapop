@@ -21,8 +21,8 @@ interface Props {
   continueOffer: ContinueOffer;
   adAvailable: boolean;
   adUnavailable: boolean;
-  energyLives: number;
-  maxEnergyLives: number;
+  energy: number;
+  maxEnergy: number;
   nextEnergyInMs: number;
   onContinue: () => void;
   onRetry: () => void;
@@ -40,8 +40,8 @@ export const GameOverScreen: React.FC<Props> = ({
   continueOffer,
   adAvailable,
   adUnavailable,
-  energyLives,
-  maxEnergyLives,
+  energy,
+  maxEnergy,
   nextEnergyInMs,
   onContinue,
   onRetry,
@@ -63,7 +63,7 @@ export const GameOverScreen: React.FC<Props> = ({
   }, [secondsRemaining]);
 
   const hasContinue = continueOffer.canShow;
-  const canRetryFresh = energyLives > 0;
+  const canRetryFresh = energy > 0;
   const nextEnergyMinutes = Math.ceil(nextEnergyInMs / 60000);
   const waitingForDelay = secondsRemaining > 0;
   const waitingForAd = hasContinue && !adsRemoved && !adAvailable && !adUnavailable;
@@ -128,8 +128,8 @@ export const GameOverScreen: React.FC<Props> = ({
           >
             <Text style={styles.btnText}>
               {canRetryFresh
-                ? `Retry Level (${energyLives}/${maxEnergyLives})`
-                : `Next Life in ${nextEnergyMinutes}m`}
+                ? `Retry Level - Energy ${energy}/${maxEnergy}`
+                : `Next energy in ${nextEnergyMinutes}m`}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
