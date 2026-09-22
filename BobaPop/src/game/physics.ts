@@ -129,7 +129,7 @@ export function physicsStep(
     if (ball.sticky) {
       // follow paddle
       const px = paddle.x + (ball.stickyOffsetX ?? paddle.width / 2);
-      return { ...ball, x: px, y: GAME_HEIGHT - PADDLE_Y_OFFSET - BALL_RADIUS + 14 };
+      return { ...ball, x: px, y: GAME_HEIGHT - PADDLE_Y_OFFSET - BALL_RADIUS };
     }
 
     let { x, y, vx, vy } = ball;
@@ -163,7 +163,7 @@ export function physicsStep(
         return {
           ...ball,
           x,
-          y: pr.y - BALL_RADIUS + 14,
+          y: pr.y - BALL_RADIUS,
           vx,
           vy,
           sticky: true,
@@ -412,7 +412,7 @@ export function makeInitialBall(paddleX: number, paddleWidth: number, speed = 7)
   return {
     id: uid(),
     x: paddleX + paddleWidth / 2,
-    y: GAME_HEIGHT - PADDLE_Y_OFFSET - BALL_RADIUS + 14,
+    y: GAME_HEIGHT - PADDLE_Y_OFFSET - BALL_RADIUS,
     vx: (Math.random() - 0.5) * 2,
     vy: -speed,
     active: true,
@@ -426,7 +426,7 @@ export function makeStickyBall(paddle: { x: number; width: number }): Ball {
   return {
     id: uid(),
     x: paddle.x + paddle.width / 2,
-    y: GAME_HEIGHT - PADDLE_Y_OFFSET - BALL_RADIUS + 14,
+    y: GAME_HEIGHT - PADDLE_Y_OFFSET - BALL_RADIUS,
     vx: (Math.random() > 0.5 ? 1 : -1) * 4,
     vy: -7,
     active: true,

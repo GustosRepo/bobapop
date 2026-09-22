@@ -16,7 +16,7 @@ function findSubscriptionOffer(product?: ProductSubscription) {
   return product.subscriptionOffers?.[0]?.offerTokenAndroid ?? undefined;
 }
 
-export function usePlusPurchases(onEntitlementActive: () => void) {
+export function usePlusPurchases(onEntitlementChange: (active: boolean) => void) {
   const [busyPlanId, setBusyPlanId] = useState<PlusPlanId | null>(null);
   const [storeMessage, setStoreMessage] = useState<string | null>(null);
   const finishTransactionRef = useRef<ReturnType<typeof useIAP>['finishTransaction'] | null>(null);
@@ -26,7 +26,7 @@ export function usePlusPurchases(onEntitlementActive: () => void) {
       if (!isPlusPurchase(purchase)) return;
       try {
         await finishTransactionRef.current?.({ purchase, isConsumable: false });
-        onEntitlementActive();
+        onEntitlementChange(true);
         setStoreMessage(null);
       } catch {
         setStoreMessage('Purchase completed, but final confirmation failed. Use Restore Purchase.');
@@ -51,17 +51,18 @@ export function usePlusPurchases(onEntitlementActive: () => void) {
     iap.getActiveSubscriptions(PLUS_PRODUCT_IDS).catch(() => {});
     iap.hasActiveSubscriptions(PLUS_PRODUCT_IDS)
       .then((hasPlus) => {
-        if (hasPlus) onEntitlementActive();
+        onEntitlementChange(hasPlus);
       })
       .catch(() => {});
-  }, [iap.connected, onEntitlementActive]);
+  }, [iap.connected, onEntitlementChange]);
 
   useEffect(() => {
+    if (!iap.connected || iap.activeSubscriptions.length === 0) return;
     const hasPlus = iap.activeSubscriptions.some((subscription) => (
       PLUS_PRODUCT_IDS.includes(subscription.productId as PlusPlanId) && subscription.isActive
     ));
-    if (hasPlus) onEntitlementActive();
-  }, [iap.activeSubscriptions, onEntitlementActive]);
+    onEntitlementChange(hasPlus);
+  }, [iap.activeSubscriptions, iap.connected, onEntitlementChange]);
 
   const storePlans = useMemo(() => {
     return PLUS_PLANS.map((plan) => {
@@ -107,15 +108,16 @@ export function usePlusPurchases(onEntitlementActive: () => void) {
       await iap.restorePurchases();
       await iap.getActiveSubscriptions(PLUS_PRODUCT_IDS);
       const hasPlus = await iap.hasActiveSubscriptions(PLUS_PRODUCT_IDS);
+      onEntitlementChange(hasPlus);
       if (hasPlus) {
-        onEntitlementActive();
+        setStoreMessage(null);
       } else {
         setStoreMessage('No active BobaPop Plus subscription was found.');
       }
     } catch (error) {
       setStoreMessage(error instanceof Error ? error.message : 'Restore failed.');
     }
-  }, [iap, onEntitlementActive]);
+  }, [iap, onEntitlementChange]);
 
   return {
     busyPlanId,

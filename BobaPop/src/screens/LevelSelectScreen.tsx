@@ -10,6 +10,7 @@ import {
   ImageBackground,
   Animated,
   TouchableOpacity,
+  Modal,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -72,6 +73,7 @@ export const LevelSelectScreen: React.FC<Props> = ({
 }) => {
   const { playSound } = useSound();
   const [settingsVisible, setSettingsVisible] = useState(false);
+  const [statsVisible, setStatsVisible] = useState(false);
   const mascotAnim = useRef(new Animated.Value(0)).current;
   const starShimmerAnim = useRef(new Animated.Value(0)).current;
   const worldAnims = useRef(WORLDS.map(() => new Animated.Value(0))).current;
@@ -81,6 +83,15 @@ export const LevelSelectScreen: React.FC<Props> = ({
     return Object.values(levelStars).reduce((sum, stars) => sum + stars, 0);
   }, [levelStars]);
   const playerLevel = calculatePlayerLevel(totalStars);
+  const completedLevels = useMemo(() => {
+    return Object.values(levelStars).filter((stars) => stars > 0).length;
+  }, [levelStars]);
+  const perfectLevels = useMemo(() => {
+    return Object.values(levelStars).filter((stars) => stars >= 3).length;
+  }, [levelStars]);
+  const bestScore = useMemo(() => {
+    return Object.values(levelHighScores).reduce((best, score) => Math.max(best, score), 0);
+  }, [levelHighScores]);
   const nextEnergyMinutes = Math.ceil(nextEnergyInMs / 60000);
 
   useEffect(() => {
@@ -175,8 +186,9 @@ export const LevelSelectScreen: React.FC<Props> = ({
       <View style={styles.topBar}>
         {/* Player Level Badge */}
         <TouchableOpacity style={styles.playerBadge} activeOpacity={0.8} onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          // TODO: show player stats modal
+          if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          playSound('level_tap');
+          setStatsVisible(true);
         }}>
           <LinearGradient
             colors={['#FFD700', '#FF8C00']}
@@ -498,6 +510,60 @@ export const LevelSelectScreen: React.FC<Props> = ({
           onOpenPlus();
         }}
       />
+
+      <Modal visible={statsVisible} transparent animationType="fade" onRequestClose={() => setStatsVisible(false)}>
+        <TouchableOpacity
+          style={styles.statsBackdrop}
+          activeOpacity={1}
+          onPress={() => setStatsVisible(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.statsCard}>
+            <LinearGradient
+              colors={['#FFF8EC', '#F5D39A']}
+              style={StyleSheet.absoluteFill}
+            />
+            <Image source={IMAGES.mascotExcited} style={styles.statsMascot} resizeMode="contain" />
+            <Text style={styles.statsTitle}>{playerLevel.title}</Text>
+            <Text style={styles.statsLevel}>Level {playerLevel.level}</Text>
+
+            <View style={styles.statsGrid}>
+              <View style={styles.statTile}>
+                <Text style={styles.statValue}>{totalStars}/60</Text>
+                <Text style={styles.statLabel}>Stars</Text>
+              </View>
+              <View style={styles.statTile}>
+                <Text style={styles.statValue}>{completedLevels}/{LEVELS.length}</Text>
+                <Text style={styles.statLabel}>Cleared</Text>
+              </View>
+              <View style={styles.statTile}>
+                <Text style={styles.statValue}>{perfectLevels}</Text>
+                <Text style={styles.statLabel}>Perfects</Text>
+              </View>
+              <View style={styles.statTile}>
+                <Text style={styles.statValue}>{bestScore.toLocaleString()}</Text>
+                <Text style={styles.statLabel}>Best Score</Text>
+              </View>
+            </View>
+
+            <View style={styles.statsFooter}>
+              <Text style={styles.statsFooterText}>
+                {totalBobas.toLocaleString()} bobas popped
+              </Text>
+              <Text style={styles.statsFooterText}>
+                Energy {energy}/{maxEnergy}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.statsDoneBtn}
+              onPress={() => setStatsVisible(false)}
+              activeOpacity={0.86}
+            >
+              <Text style={styles.statsDoneText}>Done</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </ImageBackground>
   );
 };
@@ -841,6 +907,105 @@ const styles = StyleSheet.create({
   sparkleLeft: {
     top: 10,
     left: 0,
+  },
+  statsBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(34, 16, 6, 0.68)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  statsCard: {
+    width: '100%',
+    maxWidth: 380,
+    borderRadius: 24,
+    overflow: 'hidden',
+    paddingHorizontal: 22,
+    paddingTop: 22,
+    paddingBottom: 20,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.68)',
+  },
+  statsMascot: {
+    width: 94,
+    height: 94,
+    marginBottom: 4,
+  },
+  statsTitle: {
+    color: '#4E240A',
+    fontSize: 28,
+    lineHeight: 34,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  statsLevel: {
+    color: '#8A5424',
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '900',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginTop: 2,
+    marginBottom: 16,
+  },
+  statsGrid: {
+    width: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  statTile: {
+    width: '48%',
+    minHeight: 76,
+    borderRadius: 16,
+    backgroundColor: 'rgba(73, 31, 8, 0.88)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+  },
+  statValue: {
+    color: '#FFF5DD',
+    fontSize: 21,
+    lineHeight: 26,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  statLabel: {
+    color: 'rgba(255, 245, 221, 0.72)',
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '800',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginTop: 4,
+  },
+  statsFooter: {
+    width: '100%',
+    marginTop: 14,
+    gap: 4,
+    alignItems: 'center',
+  },
+  statsFooterText: {
+    color: '#5F3212',
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '800',
+  },
+  statsDoneBtn: {
+    width: '100%',
+    marginTop: 18,
+    borderRadius: 16,
+    paddingVertical: 14,
+    backgroundColor: '#6B3E1F',
+    alignItems: 'center',
+  },
+  statsDoneText: {
+    color: '#FFF',
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '900',
   },
   // Locked World Card Styles
   lockedWorldCard: {

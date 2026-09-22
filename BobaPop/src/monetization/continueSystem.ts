@@ -17,7 +17,6 @@ export interface ContinueOffer {
 
 export interface ContinuePolicy {
   noAdsThroughLevel: number;
-  introStartLevel: number;
   fullSystemStartLevel: number;
   introMaxContinues: number;
   maxContinues: number;
@@ -29,7 +28,6 @@ export interface ContinuePolicy {
 
 export const CONTINUE_POLICY: ContinuePolicy = {
   noAdsThroughLevel: 3,
-  introStartLevel: 4,
   fullSystemStartLevel: 6,
   introMaxContinues: 1,
   maxContinues: 3,

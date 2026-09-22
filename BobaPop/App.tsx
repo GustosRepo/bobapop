@@ -39,11 +39,20 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('screen');
 const DEV_UNLOCK_ALL = false; // set to false before shipping
 // ─────────────────────────────────────────────────────────────────────────────
 
+const START_LOCK_MS = 650;
+
 type Screen =
   | { name: 'select' }
   | { name: 'game'; levelIndex: number; runId: number; initialLives?: number; resumeState?: GameState }
   | { name: 'complete'; score: number; stars: number; levelIndex: number }
-  | { name: 'over'; score: number; levelIndex: number; runId: number; failedState: GameState };
+  | {
+      name: 'over';
+      score: number;
+      levelIndex: number;
+      runId: number;
+      failedState: GameState;
+      continueAvailableAt: number;
+    };
 
 /** Stars based on lives remaining — standard for casual arcade games */
 function livesToStars(lives: number): number {
@@ -56,6 +65,8 @@ export default function App() {
   const levelIds = useMemo(() => LEVELS.map((level) => level.id), []);
   const [screen, setScreen] = useState<Screen>({ name: 'select' });
   const nextRunIdRef = useRef(1);
+  const startLockedRef = useRef(false);
+  const continuePendingRef = useRef(false);
   const [runContinues, setRunContinues] = useState<Record<number, number>>({});
   const [plusPaywallVisible, setPlusPaywallVisible] = useState(false);
   const [
@@ -108,8 +119,8 @@ export default function App() {
   }, [loading, seenOnboarding.app_intro]);
 
   const { isLoaded: rewardedAdLoaded, status: rewardedAdStatus, showAd } = useRewardedAd();
-  const markPlusActive = useCallback(() => {
-    setAdsRemovedEntitlement(true);
+  const setPlusEntitlement = useCallback((active: boolean) => {
+    setAdsRemovedEntitlement(active);
   }, [setAdsRemovedEntitlement]);
   const {
     busyPlanId,
@@ -117,7 +128,7 @@ export default function App() {
     storePlans,
     purchasePlan,
     restorePurchases,
-  } = usePlusPurchases(markPlusActive);
+  } = usePlusPurchases(setPlusEntitlement);
 
   useEffect(() => {
     setSoundEnabled(soundEnabled);
@@ -157,21 +168,32 @@ export default function App() {
   }, [screenOpacity]);
 
   const startLevel = useCallback((levelIndex: number, initialLives?: number, runId?: number, resumeState?: GameState) => {
-    if (levelIndex < 0 || levelIndex >= LEVELS.length) return;
-    if (runId === undefined && !isLevelUnlocked(levelIndex)) return;
+    if (startLockedRef.current) return false;
+    if (levelIndex < 0 || levelIndex >= LEVELS.length) return false;
+    if (runId === undefined && !isLevelUnlocked(levelIndex)) return false;
+
+    startLockedRef.current = true;
+    const releaseStartLock = () => {
+      setTimeout(() => {
+        startLockedRef.current = false;
+      }, START_LOCK_MS);
+    };
 
     const resolvedRunId = runId ?? nextRunIdRef.current;
     if (runId === undefined) {
       if (!spendEnergy()) {
+        startLockedRef.current = false;
         const minutes = Math.ceil(nextEnergyInMs / 60000);
         Alert.alert('Out of energy', minutes > 0 ? `Next energy in ${minutes} minute${minutes === 1 ? '' : 's'}.` : 'Energy will be ready soon.');
-        return;
+        return false;
       }
       nextRunIdRef.current += 1;
       setRunContinues((prev) => ({ ...prev, [resolvedRunId]: 0 }));
     }
     trackLevelStart(levelIndex, resolvedRunId);
     navigateTo({ name: 'game', levelIndex, runId: resolvedRunId, initialLives, resumeState });
+    releaseStartLock();
+    return true;
   }, [isLevelUnlocked, navigateTo, nextEnergyInMs, spendEnergy]);
 
   const handleSelectLevel = useCallback((index: number) => {
@@ -214,10 +236,19 @@ export default function App() {
     (score: number, failedState: GameState) => {
       if (screen.name !== 'game') return;
       const continuesUsed = runContinues[screen.runId] ?? 0;
+      const offer = getContinueOffer(screen.levelIndex, continuesUsed, adsRemoved);
+      const continueAvailableAt = Date.now() + offer.delaySeconds * 1000;
       trackLevelFail(screen.levelIndex, score, continuesUsed);
-      navigateTo({ name: 'over', score, levelIndex: screen.levelIndex, runId: screen.runId, failedState });
+      navigateTo({
+        name: 'over',
+        score,
+        levelIndex: screen.levelIndex,
+        runId: screen.runId,
+        failedState,
+        continueAvailableAt,
+      });
     },
-    [screen, navigateTo, runContinues],
+    [adsRemoved, screen, navigateTo, runContinues],
   );
 
   const handleContinue = useCallback(() => {
@@ -226,20 +257,27 @@ export default function App() {
     const continuesUsed = runContinues[runId] ?? 0;
     const offer = getContinueOffer(levelIndex, continuesUsed, adsRemoved);
     if (!offer.canShow) return;
+    if (!adsRemoved && Date.now() < screen.continueAvailableAt) return;
+    if (continuePendingRef.current) return;
 
+    continuePendingRef.current = true;
     trackContinueAccepted(levelIndex, offer.continueNumber, offer.rewardLives);
 
     if (offer.reason === 'ads_removed') {
-      setRunContinues((prev) => ({ ...prev, [runId]: continuesUsed + 1 }));
-      startLevel(levelIndex, offer.rewardLives, runId, screen.failedState);
+      if (startLevel(levelIndex, offer.rewardLives, runId, screen.failedState)) {
+        setRunContinues((prev) => ({ ...prev, [runId]: continuesUsed + 1 }));
+      }
+      continuePendingRef.current = false;
       return;
     }
 
     showAd((result) => {
       trackRewardedAdResult(levelIndex, offer.continueNumber, result);
+      continuePendingRef.current = false;
       if (result !== 'watched') return;
-      setRunContinues((prev) => ({ ...prev, [runId]: continuesUsed + 1 }));
-      startLevel(levelIndex, offer.rewardLives, runId, screen.failedState);
+      if (startLevel(levelIndex, offer.rewardLives, runId, screen.failedState)) {
+        setRunContinues((prev) => ({ ...prev, [runId]: continuesUsed + 1 }));
+      }
     });
   }, [adsRemoved, runContinues, screen, showAd, startLevel]);
 

@@ -185,7 +185,13 @@ export function useGameLoop(levelIndex: number, initialLives = 3, resumeState?: 
         phase: 'playing',
         balls: s.balls.map((b) =>
           b.sticky
-            ? { ...b, sticky: false, stickyOffsetX: undefined }
+            ? {
+                ...b,
+                x: s.paddle.x + (b.stickyOffsetX ?? s.paddle.width / 2),
+                y: GAME_HEIGHT - PADDLE_Y_OFFSET - BALL_RADIUS,
+                sticky: false,
+                stickyOffsetX: undefined,
+              }
             : b,
         ),
       };
@@ -213,9 +219,19 @@ export function useGameLoop(levelIndex: number, initialLives = 3, resumeState?: 
     const s = stateRef.current;
     const halfW = s.paddle.width / 2;
     const newX = Math.max(0, Math.min(GAME_WIDTH - s.paddle.width, screenX - halfW));
+    const paddle = { ...s.paddle, x: newX };
     stateRef.current = {
       ...s,
-      paddle: { ...s.paddle, x: newX },
+      paddle,
+      balls: s.balls.map((ball) => (
+        ball.sticky
+          ? {
+              ...ball,
+              x: paddle.x + (ball.stickyOffsetX ?? paddle.width / 2),
+              y: GAME_HEIGHT - PADDLE_Y_OFFSET - BALL_RADIUS,
+            }
+          : ball
+      )),
     };
     // Only trigger re-render when not playing (game loop handles it during play)
     if (s.phase !== 'playing') {

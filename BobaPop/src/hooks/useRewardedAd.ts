@@ -17,7 +17,6 @@ try {
   // Running in Expo Go or an environment without the native module.
 }
 
-const FALLBACK_ANDROID_REWARDED_UNIT_ID = 'ca-app-pub-8863066373093222/9842491767';
 const ALLOW_RELEASE_TEST_ADS = process.env.EXPO_PUBLIC_ALLOW_TEST_ADS_IN_RELEASE === 'true';
 const USE_TEST_ADS = __DEV__ || (
   ALLOW_RELEASE_TEST_ADS && process.env.EXPO_PUBLIC_ADMOB_USE_TEST_ADS === 'true'
@@ -45,9 +44,7 @@ function resolveRewardedUnitId() {
     );
   }
 
-  if (Platform.OS === 'android') return FALLBACK_ANDROID_REWARDED_UNIT_ID;
-
-  console.warn('[ads] Missing valid iOS rewarded ad unit ID. Rewarded ads will stay disabled.');
+  console.warn(`[ads] Missing valid ${Platform.OS} rewarded ad unit ID. Rewarded ads will stay disabled.`);
   return null;
 }
 

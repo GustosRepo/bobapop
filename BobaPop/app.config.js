@@ -1,8 +1,24 @@
-const PROD_ANDROID_ADMOB_APP_ID =
-  process.env.EXPO_PUBLIC_ADMOB_ANDROID_APP_ID ?? 'ca-app-pub-8863066373093222~6277605097';
+const IS_PRODUCTION_BUILD = process.env.EAS_BUILD_PROFILE === 'production';
+const TEST_ANDROID_ADMOB_APP_ID = 'ca-app-pub-3940256099942544~3347511713';
+const TEST_IOS_ADMOB_APP_ID = 'ca-app-pub-3940256099942544~1458002511';
 
-const PROD_IOS_ADMOB_APP_ID =
-  process.env.EXPO_PUBLIC_ADMOB_IOS_APP_ID ?? 'ca-app-pub-8863066373093222~6277605097';
+function resolveAdMobAppId(platform, envValue, testValue) {
+  if (envValue) return envValue;
+  if (!IS_PRODUCTION_BUILD) return testValue;
+  throw new Error(`Missing EXPO_PUBLIC_ADMOB_${platform.toUpperCase()}_APP_ID for production builds.`);
+}
+
+const PROD_ANDROID_ADMOB_APP_ID = resolveAdMobAppId(
+  'android',
+  process.env.EXPO_PUBLIC_ADMOB_ANDROID_APP_ID,
+  TEST_ANDROID_ADMOB_APP_ID,
+);
+
+const PROD_IOS_ADMOB_APP_ID = resolveAdMobAppId(
+  'ios',
+  process.env.EXPO_PUBLIC_ADMOB_IOS_APP_ID,
+  TEST_IOS_ADMOB_APP_ID,
+);
 
 const GOOGLE_MOBILE_ADS_CONFIG = {
   androidAppId: PROD_ANDROID_ADMOB_APP_ID,
@@ -36,25 +52,24 @@ module.exports = {
       },
     },
     android: {
+      package: 'com.codewerx.bobapop',
       adaptiveIcon: {
         foregroundImage: './assets/adaptive-icon.png',
         backgroundColor: '#2A0F05',
       },
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
-      permissions: [
-        'android.permission.RECORD_AUDIO',
-        'android.permission.MODIFY_AUDIO_SETTINGS',
-        'android.permission.FOREGROUND_SERVICE',
-        'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK',
-      ],
     },
     web: {
       favicon: './assets/favicon.png',
     },
     plugins: [
       'expo-font',
-      'expo-audio',
+      ['expo-audio', {
+        microphonePermission: false,
+        recordAudioAndroid: false,
+        enableBackgroundPlayback: false,
+      }],
       'expo-iap',
       ['react-native-google-mobile-ads', GOOGLE_MOBILE_ADS_CONFIG],
     ],
