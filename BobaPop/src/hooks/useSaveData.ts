@@ -31,6 +31,7 @@ interface UseSaveDataReturn {
   setAdsRemovedEntitlement: (active: boolean) => void;
   isLevelUnlocked: (levelIndex: number) => boolean;
   spendEnergy: () => boolean;
+  addEnergy: (amount?: number) => boolean;
   recordLevelComplete: (levelIndex: number, stars: number, score: number, bricksPopped: number) => void;
   markWorldSeen: (worldIndex: number) => void;
   markOnboardingSeen: (key: string) => void;
@@ -170,6 +171,22 @@ export function useSaveData(devUnlockAll: boolean, levelIds: string[]): UseSaveD
     return true;
   }, [persist]);
 
+  const addEnergy = useCallback((amount = 1) => {
+    if (amount <= 0) return false;
+    const resolved = resolveEnergy(saveRef.current);
+    if (resolved.energyLives >= MAX_ENERGY) {
+      persist(resolved);
+      return false;
+    }
+    const energyLives = Math.min(MAX_ENERGY, resolved.energyLives + amount);
+    persist({
+      ...resolved,
+      energyLives,
+      energyUpdatedAt: energyLives >= MAX_ENERGY ? Date.now() : resolved.energyUpdatedAt,
+    });
+    return true;
+  }, [persist]);
+
   // ── Resolved values ─────────────────────────────────────────────────────────
   const levelStars = useMemo(
     () => mapLevelIdsToIndexRecord(save.levelStarsById, levelIds),
@@ -194,5 +211,5 @@ export function useSaveData(devUnlockAll: boolean, levelIds: string[]): UseSaveD
     ? 0
     : Math.max(0, ENERGY_REFILL_MS - (energyNow - resolvedSave.energyUpdatedAt));
 
-  return { loading, unlockedUpTo, unlockedLevelIds: save.unlockedLevelIds, levelStars, levelHighScores, totalBobas: save.totalBobas, seenWorlds: save.seenWorlds, soundEnabled: save.soundEnabled, hapticsEnabled: save.hapticsEnabled, adsRemoved: save.adsRemoved, seenOnboarding: save.seenOnboarding, energy: resolvedSave.energyLives, maxEnergy: MAX_ENERGY, nextEnergyInMs, recordLevelComplete, markWorldSeen, markOnboardingSeen, updateSettings, setAdsRemovedEntitlement, isLevelUnlocked, spendEnergy };
+  return { loading, unlockedUpTo, unlockedLevelIds: save.unlockedLevelIds, levelStars, levelHighScores, totalBobas: save.totalBobas, seenWorlds: save.seenWorlds, soundEnabled: save.soundEnabled, hapticsEnabled: save.hapticsEnabled, adsRemoved: save.adsRemoved, seenOnboarding: save.seenOnboarding, energy: resolvedSave.energyLives, maxEnergy: MAX_ENERGY, nextEnergyInMs, recordLevelComplete, markWorldSeen, markOnboardingSeen, updateSettings, setAdsRemovedEntitlement, isLevelUnlocked, spendEnergy, addEnergy };
 }

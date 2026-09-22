@@ -6,7 +6,6 @@ import { IMAGES } from '../assets/images';
 import {
   GAME_HEIGHT,
   BALL_RADIUS,
-  PADDLE_HEIGHT,
   PADDLE_Y_OFFSET,
   BOSS_WIDTH,
   BOSS_HEIGHT,
@@ -89,6 +88,63 @@ const BrickView = memo<BrickViewProps>(({
   && prev.top === next.top
 ));
 
+interface PaddleImageMetrics {
+  source: ImageSourcePropType;
+  width: number;
+  height: number;
+  visible: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+
+const PADDLE_IMAGE_METRICS: PaddleImageMetrics[] = [
+  {
+    source: IMAGES.paddle,
+    width: 670,
+    height: 179,
+    visible: { x: 0, y: 0, width: 670, height: 179 },
+  },
+  {
+    source: IMAGES.paddleSlow,
+    width: 752,
+    height: 365,
+    visible: { x: 3, y: 0, width: 735, height: 363 },
+  },
+  {
+    source: IMAGES.paddleSticky,
+    width: 752,
+    height: 340,
+    visible: { x: 0, y: 0, width: 734, height: 336 },
+  },
+  {
+    source: IMAGES.paddleWide,
+    width: 928,
+    height: 308,
+    visible: { x: 0, y: 4, width: 905, height: 304 },
+  },
+];
+
+function getPaddleImageMetrics(source: ImageSourcePropType): PaddleImageMetrics {
+  const metrics = PADDLE_IMAGE_METRICS.find((item) => item.source === source);
+  if (metrics) return metrics;
+
+  const asset = Image.resolveAssetSource(source);
+  return {
+    source,
+    width: asset?.width ?? 1,
+    height: asset?.height ?? 1,
+    visible: {
+      x: 0,
+      y: 0,
+      width: asset?.width ?? 1,
+      height: asset?.height ?? 1,
+    },
+  };
+}
+
 export const GameCanvas: React.FC<Props> = ({ state, theme, width, height, scaleX, scaleY }) => {
   const paddleY = GAME_HEIGHT - PADDLE_Y_OFFSET;
   const getBallImage = (variant?: 'default' | 'hit' | 'hot' | 'multi') => {
@@ -157,6 +213,28 @@ export const GameCanvas: React.FC<Props> = ({ state, theme, width, height, scale
                     : isWide   ? IMAGES.paddleWide
                     : isSlow   ? IMAGES.paddleSlow
                     : IMAGES.paddle;
+  const paddleMetrics = getPaddleImageMetrics(paddleImage);
+  const defaultPaddleMetrics = PADDLE_IMAGE_METRICS[0];
+  const paddleVisibleWidth = state.paddle.width * scaleX;
+  const paddleImageScale = paddleVisibleWidth / paddleMetrics.visible.width;
+  const paddleImageWidth = paddleMetrics.width * paddleImageScale;
+  const paddleImageHeight = paddleMetrics.height * paddleImageScale;
+  const paddleVisibleCenterX = (state.paddle.x + state.paddle.width / 2) * scaleX;
+  const defaultPaddleHeight = (
+    state.paddle.baseWidth
+    * scaleX
+    * defaultPaddleMetrics.visible.height
+    / defaultPaddleMetrics.visible.width
+  );
+  const paddleVisibleCenterY = paddleY * scaleY + defaultPaddleHeight / 2;
+  const paddleVisibleCenterRatioX = (
+    paddleMetrics.visible.x + paddleMetrics.visible.width / 2
+  ) / paddleMetrics.width;
+  const paddleVisibleCenterRatioY = (
+    paddleMetrics.visible.y + paddleMetrics.visible.height / 2
+  ) / paddleMetrics.height;
+  const paddleImageLeft = paddleVisibleCenterX - paddleImageWidth * paddleVisibleCenterRatioX;
+  const paddleImageTop = paddleVisibleCenterY - paddleImageHeight * paddleVisibleCenterRatioY;
 
   // ── Brick crack flash ──────────────────────────────────────────────────────
   // When a brick’s HP drops we record the frame time; a white overlay is shown for FLASH_MS.
@@ -325,13 +403,13 @@ export const GameCanvas: React.FC<Props> = ({ state, theme, width, height, scale
         style={[
           styles.paddle,
           {
-            left: state.paddle.x * scaleX,
-            top: paddleY * scaleY,
-            width: state.paddle.width * scaleX,
-            height: PADDLE_HEIGHT * scaleY * 2.8,
+            left: paddleImageLeft,
+            top: paddleImageTop,
+            width: paddleImageWidth,
+            height: paddleImageHeight,
           },
         ]}
-        resizeMode="stretch"
+        resizeMode="contain"
       />
 
       {/* Particles */}

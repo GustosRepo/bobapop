@@ -23,6 +23,7 @@ import {
   trackContinueOffer,
   configureAnalytics,
   flushAnalyticsQueue,
+  trackEnergyAdResult,
   trackGameOverExit,
   trackLevelComplete,
   trackLevelFail,
@@ -67,6 +68,7 @@ export default function App() {
   const nextRunIdRef = useRef(1);
   const startLockedRef = useRef(false);
   const continuePendingRef = useRef(false);
+  const energyAdPendingRef = useRef(false);
   const [runContinues, setRunContinues] = useState<Record<number, number>>({});
   const [plusPaywallVisible, setPlusPaywallVisible] = useState(false);
   const [
@@ -109,7 +111,7 @@ export default function App() {
     loading, unlockedUpTo, levelStars, levelHighScores, totalBobas,
     seenWorlds, soundEnabled, hapticsEnabled, adsRemoved, seenOnboarding,
     energy, maxEnergy, nextEnergyInMs,
-    recordLevelComplete, markWorldSeen, markOnboardingSeen, updateSettings, setAdsRemovedEntitlement, isLevelUnlocked, spendEnergy,
+    recordLevelComplete, markWorldSeen, markOnboardingSeen, updateSettings, setAdsRemovedEntitlement, isLevelUnlocked, spendEnergy, addEnergy,
   } = useSaveData(DEV_UNLOCK_ALL, levelIds);
 
   useEffect(() => {
@@ -167,6 +169,41 @@ export default function App() {
     });
   }, [screenOpacity]);
 
+  const handleWatchEnergyAd = useCallback(() => {
+    if (energy >= maxEnergy) {
+      Alert.alert('Energy full', 'You are already stocked up.');
+      return;
+    }
+    if (energyAdPendingRef.current) return;
+
+    if (adsRemoved) {
+      Alert.alert('Energy', 'Energy refills over time.');
+      return;
+    }
+
+    if (!rewardedAdLoaded) {
+      const message = rewardedAdStatus === 'loading'
+        ? 'The ad is still loading. Try again in a moment.'
+        : 'Rewarded ads are not available right now.';
+      Alert.alert('Ad unavailable', message);
+      return;
+    }
+
+    const energyBefore = energy;
+    energyAdPendingRef.current = true;
+    showAd((result) => {
+      energyAdPendingRef.current = false;
+      let energyAfter = energyBefore;
+      if (result === 'watched') {
+        const granted = addEnergy(1);
+        energyAfter = granted ? Math.min(maxEnergy, energyBefore + 1) : energyBefore;
+      }
+      trackEnergyAdResult(result, energyBefore, energyAfter);
+      if (result !== 'watched') return;
+      Alert.alert('Energy added', `Energy ${energyAfter}/${maxEnergy}`);
+    });
+  }, [addEnergy, adsRemoved, energy, maxEnergy, rewardedAdLoaded, rewardedAdStatus, showAd]);
+
   const startLevel = useCallback((levelIndex: number, initialLives?: number, runId?: number, resumeState?: GameState) => {
     if (startLockedRef.current) return false;
     if (levelIndex < 0 || levelIndex >= LEVELS.length) return false;
@@ -184,7 +221,16 @@ export default function App() {
       if (!spendEnergy()) {
         startLockedRef.current = false;
         const minutes = Math.ceil(nextEnergyInMs / 60000);
-        Alert.alert('Out of energy', minutes > 0 ? `Next energy in ${minutes} minute${minutes === 1 ? '' : 's'}.` : 'Energy will be ready soon.');
+        const message = minutes > 0
+          ? `Next energy in ${minutes} minute${minutes === 1 ? '' : 's'}.`
+          : 'Energy will be ready soon.';
+        const buttons = !adsRemoved && rewardedAdLoaded
+          ? [
+              { text: 'Not now', style: 'cancel' as const },
+              { text: 'Watch Ad', onPress: () => handleWatchEnergyAd() },
+            ]
+          : [{ text: 'OK' }];
+        Alert.alert('Out of energy', message, buttons);
         return false;
       }
       nextRunIdRef.current += 1;
@@ -194,7 +240,7 @@ export default function App() {
     navigateTo({ name: 'game', levelIndex, runId: resolvedRunId, initialLives, resumeState });
     releaseStartLock();
     return true;
-  }, [isLevelUnlocked, navigateTo, nextEnergyInMs, spendEnergy]);
+  }, [adsRemoved, handleWatchEnergyAd, isLevelUnlocked, navigateTo, nextEnergyInMs, rewardedAdLoaded, spendEnergy]);
 
   const handleSelectLevel = useCallback((index: number) => {
     if (index < 0 || index >= LEVELS.length || !isLevelUnlocked(index)) return;
@@ -336,7 +382,10 @@ export default function App() {
           energy={energy}
           maxEnergy={maxEnergy}
           nextEnergyInMs={nextEnergyInMs}
+          energyAdReady={!adsRemoved && rewardedAdLoaded}
+          energyAdLoading={!adsRemoved && rewardedAdStatus === 'loading'}
           onSelectLevel={handleSelectLevel}
+          onWatchEnergyAd={handleWatchEnergyAd}
           onUpdateSettings={updateSettings}
           onOpenPlus={() => setPlusPaywallVisible(true)}
         />
@@ -403,6 +452,7 @@ export default function App() {
           maxEnergy={maxEnergy}
           nextEnergyInMs={nextEnergyInMs}
           onContinue={handleContinue}
+          onWatchEnergyAd={handleWatchEnergyAd}
           onRetry={handleRetryFromGameOver}
           onMenu={handleLevelSelectFromGameOver}
           onOpenPlus={() => setPlusPaywallVisible(true)}

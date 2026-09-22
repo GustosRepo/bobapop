@@ -174,6 +174,20 @@ export function trackRewardedAdResult(
   });
 }
 
+export function trackEnergyAdResult(
+  result: 'watched' | 'not_available' | 'skipped' | 'closed' | 'timeout' | 'error',
+  energyBefore: number,
+  energyAfter: number,
+) {
+  if (result === 'watched') sessionCounters.adsWatched += 1;
+  trackGameEvent('energy_ad_result', {
+    result,
+    energy_before: energyBefore,
+    energy_after: energyAfter,
+    ads_watched_per_session: sessionCounters.adsWatched,
+  });
+}
+
 export function trackGameOverExit(levelIndex: number, action: 'retry' | 'level_select') {
   trackGameEvent('game_over_exit', {
     level_number: levelIndex + 1,

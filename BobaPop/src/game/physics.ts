@@ -97,10 +97,13 @@ export function physicsStep(
   const activePowerUps = state.activePowerUps.filter((p) => p.expiresAt > now);
   const wideActive = activePowerUps.some((p) => p.type === 'wide_paddle');
   const stickyActive = activePowerUps.some((p) => p.type === 'sticky_paddle');
+  const paddleWidth = wideActive ? state.paddle.baseWidth * 1.6 : state.paddle.baseWidth;
+  const paddleCenter = state.paddle.x + state.paddle.width / 2;
 
   const paddle = {
     ...state.paddle,
-    width: wideActive ? state.paddle.baseWidth * 1.6 : state.paddle.baseWidth,
+    x: Math.max(0, Math.min(GAME_WIDTH - paddleWidth, paddleCenter - paddleWidth / 2)),
+    width: paddleWidth,
   };
 
   let newBricks = [...state.bricks];

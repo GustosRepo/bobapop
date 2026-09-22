@@ -25,6 +25,7 @@ interface Props {
   maxEnergy: number;
   nextEnergyInMs: number;
   onContinue: () => void;
+  onWatchEnergyAd: () => void;
   onRetry: () => void;
   onMenu: () => void;
   onOpenPlus: () => void;
@@ -44,6 +45,7 @@ export const GameOverScreen: React.FC<Props> = ({
   maxEnergy,
   nextEnergyInMs,
   onContinue,
+  onWatchEnergyAd,
   onRetry,
   onMenu,
   onOpenPlus,
@@ -132,6 +134,16 @@ export const GameOverScreen: React.FC<Props> = ({
                 : `Next energy in ${nextEnergyMinutes}m`}
             </Text>
           </TouchableOpacity>
+          {!canRetryFresh && adAvailable && !adsRemoved && (
+            <TouchableOpacity
+              style={styles.energyAdBtn}
+              onPress={onWatchEnergyAd}
+              activeOpacity={0.85}
+            >
+              <Image source={IMAGES.lifeIcon} style={styles.energyAdIcon} resizeMode="contain" />
+              <Text style={styles.energyAdText}>Watch Ad +1 Energy</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={[styles.btn, styles.btnOutline, { borderColor: theme.accentColor }]}
             onPress={onMenu}
@@ -263,6 +275,28 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '700',
+  },
+  energyAdBtn: {
+    width: '100%',
+    paddingVertical: 13,
+    paddingHorizontal: 18,
+    borderRadius: 16,
+    backgroundColor: 'rgba(245,166,35,0.18)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(245,166,35,0.62)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 9,
+  },
+  energyAdIcon: {
+    width: 24,
+    height: 24,
+  },
+  energyAdText: {
+    color: '#FFD68A',
+    fontSize: 16,
+    fontWeight: '900',
   },
   btnOutline: {
     borderWidth: 1.5,

@@ -33,7 +33,10 @@ interface Props {
   energy: number;
   maxEnergy: number;
   nextEnergyInMs: number;
+  energyAdReady: boolean;
+  energyAdLoading: boolean;
   onSelectLevel: (index: number) => void;
+  onWatchEnergyAd: () => void;
   onUpdateSettings: (sound: boolean, haptics: boolean) => void;
   onOpenPlus: () => void;
 }
@@ -67,7 +70,10 @@ export const LevelSelectScreen: React.FC<Props> = ({
   energy,
   maxEnergy,
   nextEnergyInMs,
+  energyAdReady,
+  energyAdLoading,
   onSelectLevel,
+  onWatchEnergyAd,
   onUpdateSettings,
   onOpenPlus,
 }) => {
@@ -93,6 +99,14 @@ export const LevelSelectScreen: React.FC<Props> = ({
     return Object.values(levelHighScores).reduce((best, score) => Math.max(best, score), 0);
   }, [levelHighScores]);
   const nextEnergyMinutes = Math.ceil(nextEnergyInMs / 60000);
+  const canWatchEnergyAd = energy < maxEnergy && energyAdReady;
+  const energySubText = energy >= maxEnergy
+    ? 'Full'
+    : energyAdReady
+    ? 'Watch +1'
+    : energyAdLoading
+    ? 'Ad loading'
+    : `${nextEnergyMinutes}m`;
 
   useEffect(() => {
     // Mascot entrance
@@ -201,17 +215,26 @@ export const LevelSelectScreen: React.FC<Props> = ({
         </TouchableOpacity>
 
         {/* Energy */}
-        <View style={styles.energyCounter}>
+        <TouchableOpacity
+          style={[styles.energyCounter, canWatchEnergyAd && styles.energyCounterReady]}
+          activeOpacity={canWatchEnergyAd ? 0.82 : 1}
+          disabled={!canWatchEnergyAd}
+          onPress={() => {
+            if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            playSound('level_tap');
+            onWatchEnergyAd();
+          }}
+        >
           <View style={styles.energyGlyph}>
             <Text style={styles.energyGlyphText}>E</Text>
           </View>
           <View>
             <Text style={styles.energyText}>Energy {energy}/{maxEnergy}</Text>
             <Text style={styles.energySub}>
-              {nextEnergyInMs > 0 ? `${nextEnergyMinutes}m` : 'Full'}
+              {energySubText}
             </Text>
           </View>
-        </View>
+        </TouchableOpacity>
 
         {/* Boba Counter */}
         <View style={styles.bobaCounter}>
@@ -634,6 +657,10 @@ const styles = StyleSheet.create({
     gap: 7,
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.15)',
+  },
+  energyCounterReady: {
+    borderColor: 'rgba(255,212,92,0.72)',
+    backgroundColor: 'rgba(82,39,9,0.9)',
   },
   energyGlyph: {
     width: 25,
