@@ -1,10 +1,11 @@
 const IS_PRODUCTION_BUILD = process.env.EAS_BUILD_PROFILE === 'production';
+const EAS_BUILD_PLATFORM = process.env.EAS_BUILD_PLATFORM;
 const TEST_ANDROID_ADMOB_APP_ID = 'ca-app-pub-3940256099942544~3347511713';
 const TEST_IOS_ADMOB_APP_ID = 'ca-app-pub-3940256099942544~1458002511';
 
 function resolveAdMobAppId(platform, envValue, testValue) {
   if (envValue) return envValue;
-  if (!IS_PRODUCTION_BUILD) return testValue;
+  if (!IS_PRODUCTION_BUILD || EAS_BUILD_PLATFORM !== platform) return testValue;
   throw new Error(`Missing EXPO_PUBLIC_ADMOB_${platform.toUpperCase()}_APP_ID for production builds.`);
 }
 
@@ -44,7 +45,6 @@ module.exports = {
     ios: {
       supportsTablet: false,
       bundleIdentifier: 'com.codewerx.bobapop',
-      buildNumber: '1',
       statusBarHidden: true,
       requireFullScreen: true,
       infoPlist: {
