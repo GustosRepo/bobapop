@@ -5,7 +5,6 @@ import {
   StyleSheet,
   StatusBar,
   ScrollView,
-  Dimensions,
   Image,
   ImageBackground,
   Animated,
@@ -14,9 +13,17 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { WORLDS } from '../constants/themes';
 import { IMAGES } from '../assets/images';
+import { ENERGY_AD_REWARD } from '../monetization/economy';
+import { BadgeRewards } from '../components/BadgeRewards';
+import { BadgeStyleId, getBadgeStyle } from '../game/badgeRewards';
+import { calculatePlayerLevel } from '../game/progression';
 import { LEVELS } from '../game/levels';
+import { styles } from './LevelSelectScreen.styles';
+import { LevelWorldSection } from '../components/LevelWorldSection';
 import { FloatingBobas } from '../components/FloatingBobas';
 import { SettingsModal } from '../components/SettingsModal';
 import { useSound } from '../hooks/useSound';
@@ -27,9 +34,13 @@ interface Props {
   levelStars: Record<number, number>;
   levelHighScores: Record<number, number>;
   totalBobas: number;
+  selectedBadgeId: BadgeStyleId;
+  onSelectBadge: (id: BadgeStyleId) => void;
   soundEnabled: boolean;
   hapticsEnabled: boolean;
   plusActive: boolean;
+  privacyOptionsRequired: boolean;
+  onOpenPrivacy: () => void;
   energy: number;
   maxEnergy: number;
   nextEnergyInMs: number;
@@ -41,22 +52,6 @@ interface Props {
   onOpenPlus: () => void;
 }
 
-const { width: SW, height: SH } = Dimensions.get('window');
-
-// Player level calculation based on total stars
-function calculatePlayerLevel(totalStars: number): { level: number; title: string } {
-  if (totalStars >= 60) return { level: 10, title: 'Boba Master' };
-  if (totalStars >= 54) return { level: 9, title: 'Boba Legend' };
-  if (totalStars >= 48) return { level: 8, title: 'Boba Expert' };
-  if (totalStars >= 42) return { level: 7, title: 'Boba Pro' };
-  if (totalStars >= 36) return { level: 6, title: 'Boba Ace' };
-  if (totalStars >= 30) return { level: 5, title: 'Boba Adept' };
-  if (totalStars >= 24) return { level: 4, title: 'Boba Slurper' };
-  if (totalStars >= 18) return { level: 3, title: 'Boba Fan' };
-  if (totalStars >= 12) return { level: 2, title: 'Boba Novice' };
-  if (totalStars >= 6) return { level: 1, title: 'Boba Beginner' };
-  return { level: 0, title: 'New Popper' };
-}
 
 export const LevelSelectScreen: React.FC<Props> = ({
   unlockedUpTo,
@@ -64,9 +59,13 @@ export const LevelSelectScreen: React.FC<Props> = ({
   levelStars,
   levelHighScores,
   totalBobas,
+  selectedBadgeId,
+  onSelectBadge,
   soundEnabled,
   hapticsEnabled,
   plusActive,
+  privacyOptionsRequired,
+  onOpenPrivacy,
   energy,
   maxEnergy,
   nextEnergyInMs,
@@ -77,6 +76,8 @@ export const LevelSelectScreen: React.FC<Props> = ({
   onUpdateSettings,
   onOpenPlus,
 }) => {
+  const insets = useSafeAreaInsets();
+  const reducedMotion = useReducedMotion();
   const { playSound } = useSound();
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [statsVisible, setStatsVisible] = useState(false);
@@ -89,6 +90,7 @@ export const LevelSelectScreen: React.FC<Props> = ({
     return Object.values(levelStars).reduce((sum, stars) => sum + stars, 0);
   }, [levelStars]);
   const playerLevel = calculatePlayerLevel(totalStars);
+  const badgeStyle = getBadgeStyle(selectedBadgeId, totalStars, totalBobas);
   const completedLevels = useMemo(() => {
     return Object.values(levelStars).filter((stars) => stars > 0).length;
   }, [levelStars]);
@@ -99,16 +101,18 @@ export const LevelSelectScreen: React.FC<Props> = ({
     return Object.values(levelHighScores).reduce((best, score) => Math.max(best, score), 0);
   }, [levelHighScores]);
   const nextEnergyMinutes = Math.ceil(nextEnergyInMs / 60000);
-  const canWatchEnergyAd = energy < maxEnergy && energyAdReady;
-  const energySubText = energy >= maxEnergy
+  const energyAdReward = Math.min(ENERGY_AD_REWARD, Math.max(0, maxEnergy - energy));
+  const canWatchEnergyAd = !plusActive && energy < maxEnergy && energyAdReady;
+  const energySubText = plusActive ? 'Plus · Unlimited' : energy >= maxEnergy
     ? 'Full'
     : energyAdReady
-    ? 'Watch +1'
+    ? `Watch Ad +${energyAdReward}`
     : energyAdLoading
     ? 'Ad loading'
     : `${nextEnergyMinutes}m`;
 
   useEffect(() => {
+    if (reducedMotion) { mascotAnim.setValue(1); worldAnims.forEach((anim) => anim.setValue(1)); return; }
     // Mascot entrance
     Animated.spring(mascotAnim, {
       toValue: 1,
@@ -129,9 +133,10 @@ export const LevelSelectScreen: React.FC<Props> = ({
         })
       )
     ).start();
-  }, []);
+  }, [reducedMotion]);
 
   useEffect(() => {
+    if (reducedMotion) { starShimmerAnim.setValue(0); return; }
     const loop = Animated.loop(
       Animated.timing(starShimmerAnim, {
         toValue: 1,
@@ -141,7 +146,7 @@ export const LevelSelectScreen: React.FC<Props> = ({
     );
     loop.start();
     return () => loop.stop();
-  }, [starShimmerAnim]);
+  }, [starShimmerAnim, reducedMotion]);
 
   const mascotScale = mascotAnim.interpolate({
     inputRange: [0, 1],
@@ -173,16 +178,6 @@ export const LevelSelectScreen: React.FC<Props> = ({
     ));
   }, []);
 
-  // Determine which worlds are unlocked
-  const unlockedWorlds = useMemo(() => {
-    const worlds = new Set<number>();
-    for (let i = 0; i < LEVELS.length; i++) {
-      if (!isLevelUnlocked(i)) continue;
-      worlds.add(LEVELS[i].worldIndex);
-    }
-    return worlds;
-  }, [isLevelUnlocked]);
-
   return (
     <ImageBackground
       source={IMAGES.backgrounds[0]}
@@ -197,25 +192,26 @@ export const LevelSelectScreen: React.FC<Props> = ({
       <StatusBar hidden />
 
       {/* ── Top Bar ── */}
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
         {/* Player Level Badge */}
-        <TouchableOpacity style={styles.playerBadge} activeOpacity={0.8} onPress={() => {
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="View player statistics" style={styles.playerBadge} activeOpacity={0.8} onPress={() => {
           if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           playSound('level_tap');
           setStatsVisible(true);
         }}>
           <LinearGradient
-            colors={['#FFD700', '#FF8C00']}
+            colors={badgeStyle.colors}
             start={{ x: 0, y: 0 }}
             end={{ x: 0, y: 1 }}
             style={StyleSheet.absoluteFill}
           />
           <Image source={IMAGES.effectBurst} style={styles.badgeGlow} resizeMode="cover" />
-          <Text style={styles.badgeLevel}>{playerLevel.level}</Text>
+          <Text style={[styles.badgeLevel, { color: badgeStyle.foreground }]}>{playerLevel.level}</Text>
         </TouchableOpacity>
 
         {/* Energy */}
-        <TouchableOpacity
+        <TouchableOpacity accessibilityRole="button"
+          accessibilityLabel={plusActive ? 'Unlimited Energy with Plus' : canWatchEnergyAd ? `Watch Ad · +${energyAdReward} Energy` : `Energy ${energy} of ${maxEnergy}`}
           style={[styles.energyCounter, canWatchEnergyAd && styles.energyCounterReady]}
           activeOpacity={canWatchEnergyAd ? 0.82 : 1}
           disabled={!canWatchEnergyAd}
@@ -229,7 +225,7 @@ export const LevelSelectScreen: React.FC<Props> = ({
             <Text style={styles.energyGlyphText}>E</Text>
           </View>
           <View>
-            <Text style={styles.energyText}>Energy {energy}/{maxEnergy}</Text>
+            <Text style={styles.energyText}>{plusActive ? 'Energy ∞' : `Energy ${energy}/${maxEnergy}`}</Text>
             <Text style={styles.energySub}>
               {energySubText}
             </Text>
@@ -243,7 +239,7 @@ export const LevelSelectScreen: React.FC<Props> = ({
         </View>
 
         {/* Settings Button */}
-        <TouchableOpacity style={styles.settingsBtn} onPress={() => {
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open settings" style={styles.settingsBtn} onPress={() => {
           if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           playSound('level_tap');
           setSettingsVisible(true);
@@ -266,10 +262,10 @@ export const LevelSelectScreen: React.FC<Props> = ({
         <Text style={styles.subtitle}>Pop, Slurp, Repeat!</Text>
 
         {/* ── Continue Button ── */}
-        <TouchableOpacity
+        <TouchableOpacity accessibilityRole="button"
           style={[styles.continueBtn, { backgroundColor: nextWorld.accentColor }]}
           onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             playSound('level_tap');
             onSelectLevel(nextLevelIndex);
           }}
@@ -282,241 +278,30 @@ export const LevelSelectScreen: React.FC<Props> = ({
             style={StyleSheet.absoluteFill}
           />
           <Text style={styles.continueBtnText}>
-            {nextLevelIndex === 0 ? 'START' : 'CONTINUE'}
+            {completedLevels === LEVELS.length ? 'REPLAY' : nextLevelIndex === 0 ? 'START' : 'CONTINUE'}
           </Text>
           <Text style={styles.continueBtnSub}>
-            {energy > 0
+            {plusActive ? `Level ${nextLevelIndex + 1} · Unlimited Energy` : energy > 0
               ? `Level ${nextLevelIndex + 1} - Energy ${energy}/${maxEnergy}`
               : `Next energy in ${nextEnergyMinutes}m`}
           </Text>
         </TouchableOpacity>
 
+        {completedLevels === LEVELS.length && (
+          <Text style={styles.subtitle} accessibilityLiveRegion="polite">
+            {perfectLevels === LEVELS.length ? 'Every level perfected! Replay to beat your best scores.' : `${LEVELS.length - perfectLevels} levels left to earn three stars. Choose one below.`}
+          </Text>
+        )}
+
         {/* ── World Sections ── */}
-        {WORLDS.map((world, worldIndex) => {
-          const levelIndexes = levelIndexesByWorld[worldIndex] ?? [];
-          const levelsInWorld = levelIndexes.length;
-          const completedCount = levelIndexes
-            .filter((idx) => (levelStars[idx] ?? 0) > 0).length;
-          const worldProgress = levelsInWorld > 0 ? (completedCount / levelsInWorld) * 100 : 0;
-          
-          const isWorldUnlocked = unlockedWorlds.has(worldIndex);
-          const worldAnim = worldAnims[worldIndex];
-
-          // Calculate unlock requirement for locked worlds
-          const firstLevelIndex = levelIndexes[0] ?? 0;
-          const unlockRequirement = worldIndex > 0 ? firstLevelIndex : 0;
-
-          const animStyle = {
-            opacity: worldAnim,
-            transform: [
-              {
-                translateY: worldAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [30, 0],
-                }),
-              },
-              {
-                scale: worldAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.9, 1],
-                }),
-              },
-            ],
-          };
-
-          // Show locked world preview card
-          if (!isWorldUnlocked) {
-            return (
-              <Animated.View key={worldIndex} style={[styles.worldSection, animStyle]}>
-                <TouchableOpacity
-                  style={styles.lockedWorldCard}
-                  activeOpacity={0.9}
-                  onPress={() => {
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                  }}
-                >
-                  <LinearGradient
-                    colors={['rgba(0,0,0,0.7)', 'rgba(0,0,0,0.85)']}
-                    style={StyleSheet.absoluteFill}
-                  />
-                  
-                  {/* Background preview with world colors */}
-                  <LinearGradient
-                    colors={[world.background[0], world.background[1], world.accentColor]}
-                    style={[StyleSheet.absoluteFill, { opacity: 0.15 }]}
-                  />
-
-                  <View style={styles.lockedContent}>
-                    <Image source={IMAGES.blocks[3]} style={styles.lockedBlockIcon} resizeMode="contain" />
-                    <Text style={[styles.lockedWorldName, { color: world.accentColor }]}>
-                      {world.name.toUpperCase()}
-                    </Text>
-                    <Text style={styles.unlockText}>
-                      Complete Level {unlockRequirement} to Unlock
-                    </Text>
-                    <View style={styles.lockedProgress}>
-                      <Text style={styles.lockedProgressText}>
-                        {Math.min(unlockedUpTo + 1, unlockRequirement)}/{unlockRequirement}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Decorative glow */}
-                  <View style={[styles.lockedGlow, { backgroundColor: world.accentColor }]} />
-                </TouchableOpacity>
-              </Animated.View>
-            );
-          }
-
-          // Show unlocked world with levels
-          return (
-            <Animated.View key={worldIndex} style={[styles.worldSection, animStyle]}>
-              {/* World header */}
-              <View style={styles.worldHeader}>
-                <Text style={[styles.worldName, { color: world.accentColor }]}>
-                  {world.name.toUpperCase()}
-                </Text>
-                <View style={styles.progressBar}>
-                  <View style={[styles.progressBarBg, { backgroundColor: world.accentColor, opacity: 0.2 }]} />
-                  <Animated.View
-                    style={[styles.progressFill, {
-                      backgroundColor: world.accentColor,
-                      width: `${worldProgress}%`,
-                    }]}
-                  />
-                  {/* Glow on progress bar */}
-                  <LinearGradient
-                    colors={[world.accentColor, 'transparent']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={[styles.progressGlow, {
-                      width: `${worldProgress}%`,
-                    }]}
-                  />
-                </View>
-                <Text style={styles.progressText}>
-                  {completedCount}/{levelsInWorld}
-                </Text>
-              </View>
-
-              {/* Level circles */}
-              <View style={styles.levelRow}>
-                {levelIndexes.map((globalIdx, i) => {
-                  const isUnlocked = isLevelUnlocked(globalIdx);
-                  const stars = levelStars[globalIdx] ?? 0;
-                  const isCurrent = globalIdx === nextLevelIndex;
-                  const level = LEVELS[globalIdx];
-
-                  return (
-                    <TouchableOpacity
-                      key={level.id}
-                      style={styles.levelCircleWrapper}
-                      onPress={() => {
-                        if (!isUnlocked) return;
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        playSound('level_tap');
-                        onSelectLevel(globalIdx);
-                      }}
-                      disabled={!isUnlocked}
-                      activeOpacity={0.8}
-                    >
-                      {/* Glow on current level */}
-                      {isCurrent && (
-                        <>
-                          <View style={[styles.levelGlow, { backgroundColor: world.accentColor }]} />
-                          <View style={[styles.levelGlowOuter, { backgroundColor: world.accentColor }]} />
-                        </>
-                      )}
-
-                      {/* Circle with enhanced gradient */}
-                      <View
-                        style={[
-                          styles.levelCircle,
-                          {
-                            borderColor: isCurrent
-                              ? world.accentColor
-                              : isUnlocked
-                              ? 'rgba(255,255,255,0.3)'
-                              : 'rgba(255,255,255,0.1)',
-                            borderWidth: isCurrent ? 3 : 2,
-                            shadowColor: isCurrent ? world.accentColor : '#000',
-                            shadowOpacity: isCurrent ? 0.6 : 0.3,
-                            shadowRadius: isCurrent ? 12 : 6,
-                            elevation: isCurrent ? 8 : 4,
-                          },
-                        ]}
-                      >
-                        <LinearGradient
-                          colors={
-                            isUnlocked
-                              ? [world.background[0], world.background[1]]
-                              : ['rgba(0,0,0,0.6)', 'rgba(0,0,0,0.8)']
-                          }
-                          style={[StyleSheet.absoluteFill, { borderRadius: 30 }]}
-                        />
-                        {isUnlocked ? (
-                          <>
-                            <Text style={[styles.levelNumber, { 
-                              color: world.ballColor,
-                              textShadowColor: 'rgba(0,0,0,0.5)',
-                              textShadowOffset: { width: 0, height: 2 },
-                              textShadowRadius: 4,
-                            }]}>
-                              {globalIdx + 1}
-                            </Text>
-                            {level.isBoss && (
-                              <Image source={IMAGES.boss} style={styles.bossBadge} resizeMode="contain" />
-                            )}
-                          </>
-                        ) : (
-                          <Image source={IMAGES.blocks[3]} style={styles.lockIcon} resizeMode="contain" />
-                        )}
-                      </View>
-
-                      {/* Stars */}
-                      {isUnlocked && (
-                        <View style={styles.starsWrap}>
-                          {stars === 3 && (
-                            <Animated.View
-                              style={[
-                                styles.starShimmer,
-                                {
-                                  opacity: starShimmerOpacity,
-                                  transform: [
-                                    { rotate: starShimmerRotate },
-                                    { scale: starShimmerScale },
-                                  ],
-                                },
-                              ]}
-                            >
-                              <View style={[styles.sparkleDot, styles.sparkleTop]} />
-                              <View style={[styles.sparkleDot, styles.sparkleRight]} />
-                              <View style={[styles.sparkleDot, styles.sparkleBottom]} />
-                              <View style={[styles.sparkleDot, styles.sparkleLeft]} />
-                            </Animated.View>
-                          )}
-                          <View style={styles.starsRow}>
-                            {[0, 1, 2].map((s) => (
-                              <Text
-                                key={s}
-                                style={[
-                                  styles.starIcon,
-                                  s < stars ? styles.starEarned : styles.starEmpty,
-                                ]}
-                              >
-                                ★
-                              </Text>
-                            ))}
-                          </View>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </Animated.View>
-          );
-        })}
+        {WORLDS.map((world, worldIndex) => (
+          <LevelWorldSection key={worldIndex} world={world} worldIndex={worldIndex}
+            indexes={levelIndexesByWorld[worldIndex]} unlockedUpTo={unlockedUpTo}
+            isLevelUnlocked={isLevelUnlocked} levelStars={levelStars} worldAnim={worldAnims[worldIndex]}
+            nextLevelIndex={nextLevelIndex} hapticsEnabled={hapticsEnabled}
+            playSound={playSound} onSelectLevel={onSelectLevel}
+            shimmer={{ opacity: starShimmerOpacity, rotate: starShimmerRotate, scale: starShimmerScale }} />
+        ))}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -526,6 +311,8 @@ export const LevelSelectScreen: React.FC<Props> = ({
         soundEnabled={soundEnabled}
         hapticsEnabled={hapticsEnabled}
         plusActive={plusActive}
+        privacyOptionsRequired={privacyOptionsRequired}
+        onOpenPrivacy={onOpenPrivacy}
         onClose={() => setSettingsVisible(false)}
         onUpdateSettings={onUpdateSettings}
         onOpenPlus={() => {
@@ -535,23 +322,21 @@ export const LevelSelectScreen: React.FC<Props> = ({
       />
 
       <Modal visible={statsVisible} transparent animationType="fade" onRequestClose={() => setStatsVisible(false)}>
-        <TouchableOpacity
-          style={styles.statsBackdrop}
-          activeOpacity={1}
-          onPress={() => setStatsVisible(false)}
-        >
-          <TouchableOpacity activeOpacity={1} style={styles.statsCard}>
+        <View style={styles.statsBackdrop}>
+          <TouchableOpacity accessible={false} style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setStatsVisible(false)} />
+          <View style={styles.statsCard}>
             <LinearGradient
               colors={['#FFF8EC', '#F5D39A']}
               style={StyleSheet.absoluteFill}
             />
+            <ScrollView style={{ width: '100%' }} contentContainerStyle={styles.statsContent}>
             <Image source={IMAGES.mascotExcited} style={styles.statsMascot} resizeMode="contain" />
             <Text style={styles.statsTitle}>{playerLevel.title}</Text>
             <Text style={styles.statsLevel}>Level {playerLevel.level}</Text>
 
             <View style={styles.statsGrid}>
               <View style={styles.statTile}>
-                <Text style={styles.statValue}>{totalStars}/60</Text>
+                <Text style={styles.statValue}>{totalStars}/{LEVELS.length * 3}</Text>
                 <Text style={styles.statLabel}>Stars</Text>
               </View>
               <View style={styles.statTile}>
@@ -568,527 +353,28 @@ export const LevelSelectScreen: React.FC<Props> = ({
               </View>
             </View>
 
+            <BadgeRewards stars={totalStars} bobas={totalBobas} selectedId={badgeStyle.id} onSelect={onSelectBadge} />
+
             <View style={styles.statsFooter}>
               <Text style={styles.statsFooterText}>
-                {totalBobas.toLocaleString()} bobas popped
+                {totalBobas.toLocaleString()} bobas banked from clears
               </Text>
               <Text style={styles.statsFooterText}>
-                Energy {energy}/{maxEnergy}
+                {plusActive ? 'Unlimited Energy' : `Energy ${energy}/${maxEnergy}`}
               </Text>
             </View>
 
-            <TouchableOpacity
+            <TouchableOpacity accessibilityRole="button"
               style={styles.statsDoneBtn}
               onPress={() => setStatsVisible(false)}
               activeOpacity={0.86}
             >
               <Text style={styles.statsDoneText}>Done</Text>
             </TouchableOpacity>
-          </TouchableOpacity>
-        </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
       </Modal>
     </ImageBackground>
   );
 };
-
-const styles = StyleSheet.create({
-  root: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: SW,
-    height: SH,
-  },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 12,
-  },
-  playerBadge: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    borderWidth: 3,
-    borderColor: '#FFF',
-    shadowColor: '#FFD700',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
-    elevation: 6,
-  },
-  badgeLevel: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: '#FFF',
-    textShadowColor: 'rgba(0,0,0,0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  badgeGlow: {
-    position: 'absolute',
-    width: 58,
-    height: 34,
-    opacity: 0.55,
-  },
-  bobaCounter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(60,30,10,0.85)',
-    borderRadius: 24,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    gap: 6,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.15)',
-  },
-  energyCounter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(60,30,10,0.85)',
-    borderRadius: 24,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    gap: 7,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.15)',
-  },
-  energyCounterReady: {
-    borderColor: 'rgba(255,212,92,0.72)',
-    backgroundColor: 'rgba(82,39,9,0.9)',
-  },
-  energyGlyph: {
-    width: 25,
-    height: 25,
-    borderRadius: 13,
-    backgroundColor: '#FFD45C',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  energyGlyphText: {
-    color: '#5B260A',
-    fontSize: 14,
-    lineHeight: 16,
-    fontWeight: '900',
-  },
-  energyText: {
-    color: '#FFF',
-    fontSize: 15,
-    lineHeight: 17,
-    fontWeight: '900',
-  },
-  energySub: {
-    color: 'rgba(255,255,255,0.72)',
-    fontSize: 9,
-    lineHeight: 11,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-  },
-  bobaIconText: {
-    fontSize: 17,
-    lineHeight: 20,
-  },
-  bobaText: {
-    color: '#FFF',
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  settingsBtn: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(60,30,10,0.85)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.15)',
-  },
-  settingsIcon: {
-    width: 42,
-    height: 42,
-  },
-  scroll: {
-    alignItems: 'center',
-    paddingBottom: 40,
-  },
-  mascotContainer: {
-    marginTop: 20,
-    marginBottom: 16,
-  },
-  mascot: {
-    width: 180,
-    height: 180,
-  },
-  title: {
-    fontSize: 56,
-    fontWeight: '900',
-    color: '#6B3E1F',
-    textShadowColor: 'rgba(255,255,255,0.3)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
-    letterSpacing: -1,
-  },
-  subtitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#8B5A2B',
-    marginTop: 4,
-    marginBottom: 28,
-    letterSpacing: 1,
-  },
-  continueBtn: {
-    width: SW - 64,
-    paddingVertical: 18,
-    borderRadius: 28,
-    alignItems: 'center',
-    marginBottom: 32,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  continueBtnText: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: '#FFF',
-    letterSpacing: 2,
-  },
-  continueBtnSub: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.85)',
-    marginTop: 2,
-  },
-  worldSection: {
-    width: SW - 40,
-    marginBottom: 24,
-  },
-  worldHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-    gap: 12,
-  },
-  worldName: {
-    fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: 1.5,
-  },
-  progressBar: {
-    flex: 1,
-    height: 8,
-    borderRadius: 4,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  progressBarBg: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 4,
-    position: 'absolute',
-  },
-  progressGlow: {
-    position: 'absolute',
-    height: '100%',
-    opacity: 0.4,
-  },
-  progressText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.7)',
-  },
-  levelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 2,
-    paddingVertical: 12,
-  },
-  levelCircleWrapper: {
-    width: 64,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    gap: 4,
-    paddingVertical: 4,
-  },
-  levelGlow: {
-    position: 'absolute',
-    top: -5,
-    left: '50%',
-    marginLeft: -35,
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    opacity: 0.3,
-  },
-  levelGlowOuter: {
-    position: 'absolute',
-    top: -10,
-    left: '50%',
-    marginLeft: -40,
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    opacity: 0.15,
-  },
-  levelCircle: {
-    width: 60,
-    height: 60,
-    minWidth: 60,
-    minHeight: 60,
-    maxWidth: 60,
-    maxHeight: 60,
-    borderRadius: 30,
-    alignSelf: 'center',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  levelNumber: {
-    fontSize: 24,
-    fontWeight: '900',
-  },
-  bossBadge: {
-    position: 'absolute',
-    top: -10,
-    right: -10,
-    width: 24,
-    height: 24,
-  },
-  lockIcon: {
-    width: 30,
-    height: 30,
-    opacity: 0.75,
-  },
-  starsWrap: {
-    width: 62,
-    minHeight: 18,
-    marginTop: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  starsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 3,
-    zIndex: 1,
-  },
-  starIcon: {
-    fontSize: 14,
-    lineHeight: 16,
-    fontWeight: '900',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  starEarned: {
-    color: '#FFD45C',
-    textShadowColor: 'rgba(86, 39, 7, 0.75)',
-  },
-  starEmpty: {
-    color: 'rgba(95, 51, 23, 0.72)',
-    textShadowColor: 'rgba(255, 238, 178, 0.42)',
-  },
-  starShimmer: {
-    position: 'absolute',
-    width: 58,
-    height: 24,
-    top: -3,
-    left: 2,
-  },
-  sparkleDot: {
-    position: 'absolute',
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#FFF3A7',
-    shadowColor: '#FFD45C',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.85,
-    shadowRadius: 4,
-  },
-  sparkleTop: {
-    top: 1,
-    left: 27,
-  },
-  sparkleRight: {
-    top: 10,
-    right: 0,
-  },
-  sparkleBottom: {
-    bottom: 0,
-    left: 30,
-  },
-  sparkleLeft: {
-    top: 10,
-    left: 0,
-  },
-  statsBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(34, 16, 6, 0.68)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  statsCard: {
-    width: '100%',
-    maxWidth: 380,
-    borderRadius: 24,
-    overflow: 'hidden',
-    paddingHorizontal: 22,
-    paddingTop: 22,
-    paddingBottom: 20,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.68)',
-  },
-  statsMascot: {
-    width: 94,
-    height: 94,
-    marginBottom: 4,
-  },
-  statsTitle: {
-    color: '#4E240A',
-    fontSize: 28,
-    lineHeight: 34,
-    fontWeight: '900',
-    textAlign: 'center',
-  },
-  statsLevel: {
-    color: '#8A5424',
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: '900',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginTop: 2,
-    marginBottom: 16,
-  },
-  statsGrid: {
-    width: '100%',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  statTile: {
-    width: '48%',
-    minHeight: 76,
-    borderRadius: 16,
-    backgroundColor: 'rgba(73, 31, 8, 0.88)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 10,
-  },
-  statValue: {
-    color: '#FFF5DD',
-    fontSize: 21,
-    lineHeight: 26,
-    fontWeight: '900',
-    textAlign: 'center',
-  },
-  statLabel: {
-    color: 'rgba(255, 245, 221, 0.72)',
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: '800',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginTop: 4,
-  },
-  statsFooter: {
-    width: '100%',
-    marginTop: 14,
-    gap: 4,
-    alignItems: 'center',
-  },
-  statsFooterText: {
-    color: '#5F3212',
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: '800',
-  },
-  statsDoneBtn: {
-    width: '100%',
-    marginTop: 18,
-    borderRadius: 16,
-    paddingVertical: 14,
-    backgroundColor: '#6B3E1F',
-    alignItems: 'center',
-  },
-  statsDoneText: {
-    color: '#FFF',
-    fontSize: 17,
-    lineHeight: 22,
-    fontWeight: '900',
-  },
-  // Locked World Card Styles
-  lockedWorldCard: {
-    width: '100%',
-    height: 140,
-    borderRadius: 20,
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  lockedContent: {
-    alignItems: 'center',
-    zIndex: 1,
-  },
-  lockedBlockIcon: {
-    width: 42,
-    height: 42,
-    marginBottom: 8,
-    opacity: 0.75,
-  },
-  lockedWorldName: {
-    fontSize: 22,
-    fontWeight: '900',
-    letterSpacing: 2,
-    marginBottom: 8,
-  },
-  unlockText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.7)',
-    marginBottom: 12,
-  },
-  lockedProgress: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  lockedProgressText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#FFF',
-  },
-  lockedGlow: {
-    position: 'absolute',
-    top: -20,
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    opacity: 0.1,
-  },
-});

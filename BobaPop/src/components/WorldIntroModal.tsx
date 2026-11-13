@@ -7,11 +7,13 @@ import {
   TouchableOpacity,
   Image,
   Animated,
-  Dimensions,
+  ScrollView,
   StatusBar,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { WorldTheme } from '../constants/themes';
+import { useReducedMotion } from '../hooks/useReducedMotion';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IMAGES } from '../assets/images';
 
 // ─── World-specific copy ───────────────────────────────────────────────────────
@@ -22,9 +24,8 @@ const WORLD_FLAVOR: Record<number, string> = {
   3: 'Bold & spiced.\nThe ultimate challenge.',
 };
 
-const AUTO_DISMISS_MS = 3500;
 
-const { width: SW, height: SH } = Dimensions.get('screen');
+
 
 interface Props {
   worldIndex: number;
@@ -33,44 +34,28 @@ interface Props {
 }
 
 export const WorldIntroModal: React.FC<Props> = ({ worldIndex, world, onDone }) => {
+  const reducedMotion = useReducedMotion();
+  const insets = useSafeAreaInsets();
   const scaleAnim    = useRef(new Animated.Value(0.90)).current;
   const opacityAnim  = useRef(new Animated.Value(0)).current;
-  const progressAnim = useRef(new Animated.Value(0)).current;
-  const timerRef     = useRef<Animated.CompositeAnimation | null>(null);
 
   useEffect(() => {
+    if (reducedMotion) { scaleAnim.setValue(1); opacityAnim.setValue(1); return; }
     // Entrance
     Animated.parallel([
       Animated.spring(scaleAnim, { toValue: 1, speed: 7, bounciness: 8, useNativeDriver: true }),
       Animated.timing(opacityAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
     ]).start();
 
-    // Auto-dismiss countdown bar
-    const prog = Animated.timing(progressAnim, {
-      toValue: 1,
-      duration: AUTO_DISMISS_MS,
-      useNativeDriver: false,  // animating width — can't use native driver
-    });
-    timerRef.current = prog;
-    prog.start(({ finished }) => {
-      if (finished) onDone();
-    });
-
-    return () => timerRef.current?.stop();
-  }, []);
+    return () => { scaleAnim.stopAnimation(); opacityAnim.stopAnimation(); };
+  }, [reducedMotion]);
 
   const handleDone = () => {
-    timerRef.current?.stop();
     onDone();
   };
 
-  const progressWidth = progressAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0%', '100%'],
-  });
-
   return (
-    <Modal transparent animationType="none" statusBarTranslucent>
+    <Modal transparent animationType="none" statusBarTranslucent onRequestClose={handleDone}>
       <StatusBar hidden />
       <Animated.View
         style={[styles.root, { opacity: opacityAnim, transform: [{ scale: scaleAnim }] }]}
@@ -87,7 +72,7 @@ export const WorldIntroModal: React.FC<Props> = ({ worldIndex, world, onDone }) 
         />
 
         {/* ── Content ── */}
-        <View style={styles.content}>
+        <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
           {/* World badge pill */}
           <View style={[styles.badge, { borderColor: world.accentColor + '99', backgroundColor: world.accentColor + '22' }]}>
             <Text style={[styles.badgeText, { color: world.accentColor }]}>
@@ -110,21 +95,16 @@ export const WorldIntroModal: React.FC<Props> = ({ worldIndex, world, onDone }) 
           </Text>
 
           {/* CTA */}
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button"
             style={[styles.btn, { backgroundColor: world.accentColor }]}
             onPress={handleDone}
             activeOpacity={0.82}
           >
             <Text style={styles.btnText}>Let's Pop! →</Text>
           </TouchableOpacity>
-        </View>
+        </ScrollView>
 
-        {/* Auto-dismiss progress bar along bottom */}
-        <View style={styles.progressTrack}>
-          <Animated.View
-            style={[styles.progressFill, { width: progressWidth, backgroundColor: world.accentColor }]}
-          />
-        </View>
+
       </Animated.View>
     </Modal>
   );
@@ -132,12 +112,13 @@ export const WorldIntroModal: React.FC<Props> = ({ worldIndex, world, onDone }) 
 
 const styles = StyleSheet.create({
   root: {
-    width: SW,
-    height: SH,
+    width: '100%',
+    height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
   },
   content: {
+    flexGrow: 1,
     alignItems: 'center',
     paddingHorizontal: 36,
     gap: 0,

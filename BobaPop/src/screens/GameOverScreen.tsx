@@ -1,16 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   StatusBar,
-  Dimensions,
+  ScrollView,
   Image,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { WorldTheme } from '../constants/themes';
 import { IMAGES } from '../assets/images';
+import { ENERGY_AD_REWARD } from '../monetization/economy';
 import { ContinueOffer } from '../monetization/continueSystem';
 
 interface Props {
@@ -31,7 +33,6 @@ interface Props {
   onOpenPlus: () => void;
 }
 
-const { width: SW } = Dimensions.get('window');
 
 export const GameOverScreen: React.FC<Props> = ({
   score,
@@ -50,29 +51,13 @@ export const GameOverScreen: React.FC<Props> = ({
   onMenu,
   onOpenPlus,
 }) => {
-  const [secondsRemaining, setSecondsRemaining] = useState(continueOffer.delaySeconds);
-
-  useEffect(() => {
-    setSecondsRemaining(continueOffer.delaySeconds);
-  }, [continueOffer.continueNumber, continueOffer.delaySeconds]);
-
-  useEffect(() => {
-    if (secondsRemaining <= 0) return;
-    const timer = setTimeout(() => {
-      setSecondsRemaining((seconds) => Math.max(0, seconds - 1));
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [secondsRemaining]);
-
+  const insets = useSafeAreaInsets();
   const hasContinue = continueOffer.canShow;
-  const canRetryFresh = energy > 0;
+  const canRetryFresh = adsRemoved || energy > 0;
   const nextEnergyMinutes = Math.ceil(nextEnergyInMs / 60000);
-  const waitingForDelay = secondsRemaining > 0;
   const waitingForAd = hasContinue && !adsRemoved && !adAvailable && !adUnavailable;
-  const canPressContinue = hasContinue && !waitingForDelay && !waitingForAd && !adUnavailable;
-  const continueButtonText = waitingForDelay
-    ? `Available in ${secondsRemaining}s`
-    : adUnavailable
+  const canPressContinue = hasContinue && !waitingForAd && !adUnavailable;
+  const continueButtonText = adUnavailable
     ? 'Ad unavailable'
     : waitingForAd
     ? 'Ad loading...'
@@ -86,7 +71,7 @@ export const GameOverScreen: React.FC<Props> = ({
   return (
     <LinearGradient colors={['#0A0A0A', '#1A0A0A', '#2A0A0A']} style={styles.root}>
       <StatusBar hidden />
-      <View style={styles.content}>
+      <ScrollView style={{ width: '100%' }} contentContainerStyle={[styles.content, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
         <Image source={IMAGES.mascotSad} style={styles.mascot} resizeMode="contain" />
         <Text style={styles.title}>Boba break!</Text>
         <Text style={[styles.levelText, { color: theme.accentColor }]}>
@@ -100,7 +85,7 @@ export const GameOverScreen: React.FC<Props> = ({
 
         <View style={styles.buttons}>
           {hasContinue && (
-            <TouchableOpacity
+            <TouchableOpacity accessibilityRole="button"
               style={[styles.continueBtn, !canPressContinue && styles.continueBtnDisabled]}
               onPress={onContinue}
               disabled={!canPressContinue}
@@ -119,7 +104,7 @@ export const GameOverScreen: React.FC<Props> = ({
               <Text style={styles.messageText}>{continueOffer.subtitle}</Text>
             </View>
           )}
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button"
             style={[
               styles.btn,
               canRetryFresh ? undefined : styles.continueBtnDisabled,
@@ -129,39 +114,39 @@ export const GameOverScreen: React.FC<Props> = ({
             disabled={!canRetryFresh}
           >
             <Text style={styles.btnText}>
-              {canRetryFresh
+              {adsRemoved ? 'Retry Level · Unlimited Energy' : canRetryFresh
                 ? `Retry Level - Energy ${energy}/${maxEnergy}`
                 : `Next energy in ${nextEnergyMinutes}m`}
             </Text>
           </TouchableOpacity>
           {!canRetryFresh && adAvailable && !adsRemoved && (
-            <TouchableOpacity
+            <TouchableOpacity accessibilityRole="button"
               style={styles.energyAdBtn}
               onPress={onWatchEnergyAd}
               activeOpacity={0.85}
             >
               <Image source={IMAGES.lifeIcon} style={styles.energyAdIcon} resizeMode="contain" />
-              <Text style={styles.energyAdText}>Watch Ad +1 Energy</Text>
+              <Text style={styles.energyAdText}>{`Watch Ad · +${ENERGY_AD_REWARD} Energy`}</Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button"
             style={[styles.btn, styles.btnOutline, { borderColor: theme.accentColor }]}
             onPress={onMenu}
           >
             <Text style={[styles.btnTextOutline, { color: theme.accentColor }]}>Levels</Text>
           </TouchableOpacity>
           {!adsRemoved && levelNumber >= 6 && (
-            <TouchableOpacity style={styles.plusPrompt} onPress={onOpenPlus} activeOpacity={0.82}>
+            <TouchableOpacity accessibilityRole="button" style={styles.plusPrompt} onPress={onOpenPlus} activeOpacity={0.82}>
               <Image source={IMAGES.mascotHappy} style={styles.plusIcon} resizeMode="contain" />
               <View style={styles.plusTextWrap}>
                 <Text style={styles.plusTitle}>Try BobaPop Plus</Text>
-                <Text style={styles.plusText}>Ad-free continues and no wait timers.</Text>
+                <Text style={styles.plusText}>Unlimited Energy and ad-free continues.</Text>
               </View>
               <Text style={styles.plusArrow}>›</Text>
             </TouchableOpacity>
           )}
         </View>
-      </View>
+      </ScrollView>
     </LinearGradient>
   );
 };
@@ -176,7 +161,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 16,
     paddingHorizontal: 32,
-    width: SW,
+    width: '100%',
+    flexGrow: 1,
+    justifyContent: 'center',
   },
   mascot: {
     width: 130,

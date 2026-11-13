@@ -1,0 +1,148 @@
+import type { LevelDef } from './levels';
+
+// Handcrafted seven-column patterns. Gaps create lanes into the upper field;
+// guaranteed boosts sit on the lower rows where players can reach them early.
+const grid = (...rows: string[]): number[][] => rows.map((row) => [...row].map(Number));
+
+export const CHAPTER_TWO_LEVELS: LevelDef[] = [
+  {
+    id: 'brown_sugar_spiral', name: 'Caramel Spiral', chapter: 2, worldIndex: 0, levelInWorld: 6,
+    grid: grid('2222222', '2000002', '2011102', '2010102', '2011102', '1000001'),
+    ballSpeed: 11, paddleWidth: 82, powerUpChance: 0.22,
+    guaranteedPowerUps: [{ row: 5, col: 0, type: 'multi_ball' }],
+    isBoss: false, bossHp: 0, bossSpeed: 0,
+  },
+  {
+    id: 'brown_sugar_steps', name: 'Sugar Steps', chapter: 2, worldIndex: 0, levelInWorld: 7,
+    grid: grid('3000003', '2200022', '0120210', '0012100', '0121210', '1100011'),
+    ballSpeed: 11.25, paddleWidth: 80, powerUpChance: 0.21,
+    guaranteedPowerUps: [{ row: 5, col: 1, type: 'wide_paddle' }],
+    isBoss: false, bossHp: 0, bossSpeed: 0,
+  },
+  {
+    id: 'brown_sugar_twin_cups', name: 'Twin Cups', chapter: 2, worldIndex: 0, levelInWorld: 8,
+    grid: grid('2020202', '2020202', '2120212', '2220222', '0100010', '1110111'),
+    ballSpeed: 11.5, paddleWidth: 78, powerUpChance: 0.20,
+    guaranteedPowerUps: [{ row: 5, col: 5, type: 'sticky_paddle' }],
+    isBoss: false, bossHp: 0, bossSpeed: 0,
+  },
+  {
+    id: 'brown_sugar_honeycomb', name: 'Honeycomb', chapter: 2, worldIndex: 0, levelInWorld: 9,
+    grid: grid('0230320', '2300032', '3012103', '2300032', '0230320', '1010101'),
+    ballSpeed: 11.75, paddleWidth: 78, powerUpChance: 0.20,
+    guaranteedPowerUps: [{ row: 5, col: 2, type: 'multi_ball' }],
+    isBoss: false, bossHp: 0, bossSpeed: 0,
+  },
+  {
+    id: 'brown_sugar_boss_rematch', name: 'Caramel Crown', chapter: 2, worldIndex: 0, levelInWorld: 10,
+    grid: grid('3020203', '2320232', '0230320', '0120210', '1100011', '0011100'),
+    ballSpeed: 12, paddleWidth: 76, powerUpChance: 0.22,
+    guaranteedPowerUps: [{ row: 5, col: 3, type: 'slow_motion' }],
+    isBoss: true, bossHp: 26, bossSpeed: 2.6,
+  },
+  {
+    id: 'matcha_bamboo', name: 'Bamboo Grove', chapter: 2, worldIndex: 1, levelInWorld: 6,
+    grid: grid('2030302', '1020201', '2030302', '1020201', '2030302', '1010101'),
+    ballSpeed: 12, paddleWidth: 78, powerUpChance: 0.21,
+    guaranteedPowerUps: [{ row: 5, col: 2, type: 'wide_paddle' }],
+    isBoss: false, bossHp: 0, bossSpeed: 0,
+  },
+  {
+    id: 'matcha_zen_garden', name: 'Zen Garden', chapter: 2, worldIndex: 1, levelInWorld: 7,
+    grid: grid('0033300', '0320230', '3201023', '2100012', '0320230', '0011100'),
+    ballSpeed: 12.25, paddleWidth: 76, powerUpChance: 0.20,
+    guaranteedPowerUps: [{ row: 5, col: 3, type: 'multi_ball' }],
+    isBoss: false, bossHp: 0, bossSpeed: 0,
+  },
+  {
+    id: 'matcha_river', name: 'Jade River', chapter: 2, worldIndex: 1, levelInWorld: 8,
+    grid: grid('3300022', '0230002', '0023000', '0003200', '2000320', '1100011'),
+    ballSpeed: 12.5, paddleWidth: 74, powerUpChance: 0.21,
+    guaranteedPowerUps: [{ row: 5, col: 0, type: 'sticky_paddle' }],
+    isBoss: false, bossHp: 0, bossSpeed: 0,
+  },
+  {
+    id: 'matcha_lotus', name: 'Lotus Bloom', chapter: 2, worldIndex: 1, levelInWorld: 9,
+    grid: grid('0303030', '0230320', '3020203', '2321232', '0230320', '0011100'),
+    ballSpeed: 12.75, paddleWidth: 72, powerUpChance: 0.20,
+    guaranteedPowerUps: [{ row: 5, col: 2, type: 'slow_motion' }],
+    isBoss: false, bossHp: 0, bossSpeed: 0,
+  },
+  {
+    id: 'matcha_boss_rematch', name: 'Jade Guardian', chapter: 2, worldIndex: 1, levelInWorld: 10,
+    grid: grid('0330330', '3020203', '2300032', '0203020', '2120212', '1001001'),
+    ballSpeed: 13, paddleWidth: 72, powerUpChance: 0.22,
+    guaranteedPowerUps: [{ row: 5, col: 3, type: 'multi_ball' }],
+    isBoss: true, bossHp: 30, bossSpeed: 3,
+  },
+  {
+    id: 'taro_constellation', name: 'Constellation', chapter: 2, worldIndex: 2, levelInWorld: 6,
+    grid: grid('3003003', '0202020', '0030300', '0201020', '3010103', '0100010'),
+    ballSpeed: 13, paddleWidth: 74, powerUpChance: 0.22,
+    guaranteedPowerUps: [{ row: 5, col: 1, type: 'wide_paddle' }],
+    isBoss: false, bossHp: 0, bossSpeed: 0,
+  },
+  {
+    id: 'taro_moon_gates', name: 'Moon Gates', chapter: 2, worldIndex: 2, levelInWorld: 7,
+    grid: grid('0330330', '3200023', '2000002', '3200023', '0330330', '1011101'),
+    ballSpeed: 13.25, paddleWidth: 72, powerUpChance: 0.20,
+    guaranteedPowerUps: [{ row: 5, col: 3, type: 'multi_ball' }],
+    isBoss: false, bossHp: 0, bossSpeed: 0,
+  },
+  {
+    id: 'taro_prism', name: 'Purple Prism', chapter: 2, worldIndex: 2, levelInWorld: 8,
+    grid: grid('0003000', '0032300', '0320230', '3201023', '0320230', '0011100'),
+    ballSpeed: 13.5, paddleWidth: 70, powerUpChance: 0.21,
+    guaranteedPowerUps: [{ row: 5, col: 4, type: 'slow_motion' }],
+    isBoss: false, bossHp: 0, bossSpeed: 0,
+  },
+  {
+    id: 'taro_nebula', name: 'Nebula', chapter: 2, worldIndex: 2, levelInWorld: 9,
+    grid: grid('3030303', '0232320', '2300032', '3010103', '0230320', '1100011'),
+    ballSpeed: 13.75, paddleWidth: 68, powerUpChance: 0.20,
+    guaranteedPowerUps: [{ row: 5, col: 1, type: 'multi_ball' }],
+    isBoss: false, bossHp: 0, bossSpeed: 0,
+  },
+  {
+    id: 'taro_boss_rematch', name: 'Lunar Monarch', chapter: 2, worldIndex: 2, levelInWorld: 10,
+    grid: grid('3030303', '0323230', '2300032', '3200023', '0210120', '1011101'),
+    ballSpeed: 14, paddleWidth: 68, powerUpChance: 0.22,
+    guaranteedPowerUps: [{ row: 5, col: 3, type: 'slow_motion' }],
+    isBoss: true, bossHp: 32, bossSpeed: 3.4,
+  },
+  {
+    id: 'thai_tea_sunrise', name: 'Spiced Sunrise', chapter: 2, worldIndex: 3, levelInWorld: 6,
+    grid: grid('0003000', '0303030', '3020203', '0232320', '2300032', '1101011'),
+    ballSpeed: 14, paddleWidth: 70, powerUpChance: 0.22,
+    guaranteedPowerUps: [{ row: 5, col: 3, type: 'wide_paddle' }],
+    isBoss: false, bossHp: 0, bossSpeed: 0,
+  },
+  {
+    id: 'thai_tea_fire_lanes', name: 'Fire Lanes', chapter: 2, worldIndex: 3, levelInWorld: 7,
+    grid: grid('3300033', '2300032', '1300031', '2300032', '3300033', '1100011'),
+    ballSpeed: 14, paddleWidth: 68, powerUpChance: 0.20,
+    guaranteedPowerUps: [{ row: 5, col: 5, type: 'multi_ball' }],
+    isBoss: false, bossHp: 0, bossSpeed: 0,
+  },
+  {
+    id: 'thai_tea_sparks', name: 'Sparks', chapter: 2, worldIndex: 3, levelInWorld: 8,
+    grid: grid('3030303', '0203020', '3020203', '0301030', '2030302', '1010101'),
+    ballSpeed: 14, paddleWidth: 66, powerUpChance: 0.21,
+    guaranteedPowerUps: [{ row: 5, col: 2, type: 'sticky_paddle' }],
+    isBoss: false, bossHp: 0, bossSpeed: 0,
+  },
+  {
+    id: 'thai_tea_inferno', name: 'Amber Inferno', chapter: 2, worldIndex: 3, levelInWorld: 9,
+    grid: grid('3303033', '2030302', '0321230', '3200023', '0230320', '1101011'),
+    ballSpeed: 14, paddleWidth: 64, powerUpChance: 0.20,
+    guaranteedPowerUps: [{ row: 5, col: 3, type: 'slow_motion' }],
+    isBoss: false, bossHp: 0, bossSpeed: 0,
+  },
+  {
+    id: 'thai_tea_boss_rematch', name: 'The Last Sip', chapter: 2, worldIndex: 3, levelInWorld: 10,
+    grid: grid('3033303', '2300032', '0323230', '3200023', '0230320', '1011101'),
+    ballSpeed: 14, paddleWidth: 64, powerUpChance: 0.24,
+    guaranteedPowerUps: [{ row: 5, col: 2, type: 'multi_ball' }, { row: 5, col: 4, type: 'slow_motion' }],
+    isBoss: true, bossHp: 36, bossSpeed: 3.8,
+  },
+];

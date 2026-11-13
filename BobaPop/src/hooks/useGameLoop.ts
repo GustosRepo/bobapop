@@ -1,7 +1,9 @@
 import { useRef, useCallback, useEffect, useState } from 'react';
 import * as Haptics from 'expo-haptics';
+import { AppState } from 'react-native';
+import { INITIAL_LIVES } from '../monetization/economy';
 import { BossBrick, GameState } from '../game/types';
-import { physicsStep, makeInitialBall, makeStickyBall, brickRect } from '../game/physics';
+import { physicsStep, makeInitialBall, makeStickyBall } from '../game/physics';
 import { buildLevelBricks, LevelDef } from '../game/levels';
 import {
   GAME_WIDTH,
@@ -44,7 +46,7 @@ function reviveState(state: GameState, lives: number): GameState {
   };
   return {
     ...state,
-    balls: [makeStickyBall(paddle)],
+    balls: [makeStickyBall(paddle, state.ballSpeed)],
     paddle,
     particles: [],
     activePowerUps: [],
@@ -56,10 +58,9 @@ function reviveState(state: GameState, lives: number): GameState {
   };
 }
 
-function buildInitialState(levelIndex: number, initialLives = 3, resumeState?: GameState): GameState {
+function buildInitialState(levelIndex: number, initialLives = INITIAL_LIVES, resumeState?: GameState): GameState {
   if (resumeState) return reviveState(resumeState, initialLives);
   const level = LEVELS[levelIndex];
-  const worldTheme = WORLDS[level?.worldIndex ?? 0];
   const paddleWidth = level?.paddleWidth ?? 90;
   const paddleX = GAME_WIDTH / 2 - paddleWidth / 2;
   const ball = makeInitialBall(paddleX, paddleWidth, level?.ballSpeed ?? 7);
@@ -74,11 +75,13 @@ function buildInitialState(levelIndex: number, initialLives = 3, resumeState?: G
     phase: 'idle',
     stickyCount: 3,
     bricksPopped: 0,
+    ballSpeed: level?.ballSpeed ?? 7,
+    elapsedMs: 0,
     boss: level ? buildInitialBoss(level) : undefined,
   };
 }
 
-export function useGameLoop(levelIndex: number, initialLives = 3, resumeState?: GameState) {
+export function useGameLoop(levelIndex: number, initialLives = INITIAL_LIVES, resumeState?: GameState) {
   const [gameState, setGameState] = useState<GameState>(() => buildInitialState(levelIndex, initialLives, resumeState));
   const stateRef = useRef<GameState>(gameState);
   const rafRef = useRef<number>(0);
@@ -179,6 +182,7 @@ export function useGameLoop(levelIndex: number, initialLives = 3, resumeState?: 
 
   const launchBall = useCallback(() => {
     const s = stateRef.current;
+    if (AppState.currentState !== 'active') return;
     if (s.phase === 'idle') {
       const next: GameState = {
         ...s,
@@ -208,7 +212,6 @@ export function useGameLoop(levelIndex: number, initialLives = 3, resumeState?: 
               ? { ...b, sticky: false, stickyOffsetX: undefined, vy: -Math.abs(b.vy || 7) }
               : b,
           ),
-          stickyCount: Math.max(0, s.stickyCount - 1),
         };
         syncState(next);
       }
@@ -246,24 +249,28 @@ export function useGameLoop(levelIndex: number, initialLives = 3, resumeState?: 
   }, [initialLives, levelIndex, syncState, stopLoop]);
 
   const pauseGame = useCallback(() => {
-    if (stateRef.current.phase !== 'playing') return;
+    if (stateRef.current.phase !== 'playing' && stateRef.current.phase !== 'idle') return;
     stopLoop();
     const next: GameState = { ...stateRef.current, phase: 'paused' };
     syncState(next);
   }, [stopLoop, syncState]);
 
   const resumeGame = useCallback(() => {
-    if (stateRef.current.phase !== 'paused') return;
+    if (stateRef.current.phase !== 'paused' || AppState.currentState !== 'active') return;
     const next: GameState = { ...stateRef.current, phase: 'playing' };
     syncState(next);
     startLoop();
   }, [startLoop, syncState]);
 
   useEffect(() => {
-    const fresh = buildInitialState(levelIndex, initialLives, resumeState);
-    syncState(fresh);
-    return () => stopLoop();
-  }, [initialLives, levelIndex, resumeState]);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') pauseGame();
+    });
+    if (AppState.currentState !== 'active') pauseGame();
+    return () => subscription.remove();
+  }, [pauseGame]);
+
+  useEffect(() => () => stopLoop(), [stopLoop]);
 
   return {
     gameState,

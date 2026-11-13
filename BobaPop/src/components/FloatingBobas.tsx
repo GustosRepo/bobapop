@@ -1,8 +1,9 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Dimensions, Image, StyleSheet, View } from 'react-native';
+import { Animated, useWindowDimensions, StyleSheet, View } from 'react-native';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { IMAGES } from '../assets/images';
 
-const { width: SW, height: SH } = Dimensions.get('screen');
+
 
 interface BobaConfig {
   x: number;          // % of screen width
@@ -30,6 +31,8 @@ const BOBAS: BobaConfig[] = [
 const FloatingBoba: React.FC<BobaConfig> = ({
   x, size, duration, delay, opacity, driftAmp,
 }) => {
+  const { width: SW, height: SH } = useWindowDimensions();
+  const reducedMotion = useReducedMotion();
   const riseAnim  = useRef(new Animated.Value(0)).current;
   const driftAnim = useRef(new Animated.Value(0)).current;
 
@@ -54,12 +57,13 @@ const FloatingBoba: React.FC<BobaConfig> = ({
   };
 
   useEffect(() => {
+    if (reducedMotion) return;
     const t = setTimeout(() => {
       startRise();
       startDrift();
     }, delay);
-    return () => clearTimeout(t);
-  }, []);
+    return () => { clearTimeout(t); riseAnim.stopAnimation(); driftAnim.stopAnimation(); };
+  }, [reducedMotion, SW, SH]);
 
   const translateY = riseAnim.interpolate({
     inputRange: [0, 1],

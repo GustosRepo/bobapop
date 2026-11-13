@@ -76,6 +76,8 @@ export type TelemetryEvent =
   | { type: 'boss_enraged' };
 
 export interface GameState {
+  elapsedMs?: number; // advances only while playing
+  ballSpeed?: number; // level speed retained across lives and continues
   balls: Ball[];
   paddle: Paddle;
   bricks: Brick[];

@@ -3,22 +3,24 @@ import {
   Animated,
   StyleSheet,
   PanResponder,
-  Dimensions,
+  useWindowDimensions,
+  BackHandler,
   StatusBar,
   Text,
   Image,
   TouchableOpacity,
   Modal,
-  Platform,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { IMAGES } from '../assets/images';
+import { useGameKeyboard } from '../hooks/useGameKeyboard';
 import { useGameLoop } from '../hooks/useGameLoop';
 import { GameCanvas } from '../components/GameCanvas';
 import { HUD } from '../components/HUD';
 import { GAME_WIDTH, GAME_HEIGHT } from '../constants/gameConfig';
 import { LEVELS } from '../game/levels';
-import { WORLDS } from '../constants/themes';
 import { GameState } from '../game/types';
 
 interface Props {
@@ -30,17 +32,12 @@ interface Props {
   initialLives?: number;
   resumeState?: GameState;
   energy: number;
+  unlimitedEnergy: boolean;
   maxEnergy: number;
   nextEnergyInMs: number;
   seenOnboarding: Record<string, boolean>;
   onMarkOnboardingSeen: (key: string) => void;
 }
-
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('screen');
-const SCALE_X = SCREEN_W / GAME_WIDTH;
-const SCALE_Y = SCREEN_H / GAME_HEIGHT;
-// Safe area top inset — accounts for notch/Dynamic Island when StatusBar is hidden
-const SAFE_TOP = Platform.OS === 'ios' ? 54 : (StatusBar.currentHeight ?? 24) + 8;
 
 export const GameScreen: React.FC<Props> = ({
   levelIndex,
@@ -51,12 +48,22 @@ export const GameScreen: React.FC<Props> = ({
   initialLives,
   resumeState,
   energy,
+  unlimitedEnergy,
   maxEnergy,
   nextEnergyInMs,
   seenOnboarding,
   onMarkOnboardingSeen,
 }) => {
+  const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const reducedMotion = useReducedMotion();
+  const SCALE_X = SCREEN_W / GAME_WIDTH;
+  const SCALE_Y = SCREEN_H / GAME_HEIGHT;
+  const SAFE_TOP = insets.top;
+  const inputScaleRef = useRef(SCALE_X);
+  inputScaleRef.current = SCALE_X;
   const {
+
     gameState,
     worldTheme,
     launchBall,
@@ -65,16 +72,17 @@ export const GameScreen: React.FC<Props> = ({
     resumeGame,
   } = useGameLoop(levelIndex, initialLives, resumeState);
 
-  const level = LEVELS[levelIndex];
   const displayLevel = levelIndex + 1;
+  const levelName = LEVELS[levelIndex]?.name;
   const showLaunchHint = gameState.phase === 'idle' && levelIndex === 0 && !seenOnboarding.launch;
   const nextEnergyMinutes = Math.ceil(nextEnergyInMs / 60000);
-  const canRestart = energy > 0;
+  const canRestart = unlimitedEnergy || energy > 0;
 
   // ── Screen shake ──────────────────────────────────────────────────────────
   const shakeAnim = useRef(new Animated.Value(0)).current;
 
   const triggerShake = useCallback((magnitude: number, oscillations: number) => {
+    if (reducedMotion) return;
     shakeAnim.stopAnimation();
     shakeAnim.setValue(0);
     const d = magnitude > 5 ? 45 : 28;
@@ -88,7 +96,7 @@ export const GameScreen: React.FC<Props> = ({
     }
     steps.push(Animated.timing(shakeAnim, { toValue: 0, duration: d, useNativeDriver: true }));
     Animated.sequence(steps).start();
-  }, [shakeAnim]);
+  }, [shakeAnim, reducedMotion]);
 
   const bossHpMountedRef = useRef(false);
   useEffect(() => {
@@ -154,6 +162,9 @@ export const GameScreen: React.FC<Props> = ({
     return () => timers.forEach(clearTimeout);
   }, []);
 
+  useGameKeyboard(countdown === null && (gameState.phase === 'playing' || gameState.phase === 'idle'),
+    (delta) => movePaddle(gameState.paddle.x + gameState.paddle.width / 2 + delta), launchBall, pauseGame);
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => !countdownActiveRef.current,
@@ -162,14 +173,25 @@ export const GameScreen: React.FC<Props> = ({
         if (!seenOnboardingRef.current.launch) {
           markOnboardingSeenRef.current('launch');
         }
-        movePaddleRef.current(e.nativeEvent.pageX / SCALE_X);
+        movePaddleRef.current(e.nativeEvent.pageX / inputScaleRef.current);
         launchBallRef.current();
       },
       onPanResponderMove: (_e, gestureState) => {
-        movePaddleRef.current(gestureState.moveX / SCALE_X);
+        movePaddleRef.current(gestureState.moveX / inputScaleRef.current);
       },
     }),
   ).current;
+
+  const phaseRef = useRef(gameState.phase);
+  phaseRef.current = gameState.phase;
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (phaseRef.current === 'won' || phaseRef.current === 'lost') return true;
+      pauseGame();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [pauseGame]);
 
   // Handle win/loss transitions
   React.useEffect(() => {
@@ -185,11 +207,21 @@ export const GameScreen: React.FC<Props> = ({
   }, [gameState, onGameOver, onLevelComplete]);
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { width: SCREEN_W, height: SCREEN_H }]}>
       <StatusBar hidden />
 
       <Animated.View
-        style={[styles.canvasWrapper, { transform: [{ translateX: shakeAnim }] }]}
+        style={[styles.canvasWrapper, { width: SCREEN_W, height: SCREEN_H, transform: [{ translateX: shakeAnim }] }]}
+        accessible
+        accessibilityRole="adjustable"
+        accessibilityLabel="Boba game paddle"
+        accessibilityHint="Adjust left or right to move. Activate to launch the ball."
+        accessibilityActions={[{ name: 'increment', label: 'Move right' }, { name: 'decrement', label: 'Move left' }, { name: 'activate', label: 'Launch ball' }]}
+        onAccessibilityAction={({ nativeEvent }) => {
+          if (countdownActiveRef.current) return;
+          if (nativeEvent.actionName === 'activate') launchBall();
+          else movePaddle(gameState.paddle.x + gameState.paddle.width / 2 + (nativeEvent.actionName === 'increment' ? 30 : -30));
+        }}
         {...panResponder.panHandlers}
       >
         <GameCanvas
@@ -211,7 +243,7 @@ export const GameScreen: React.FC<Props> = ({
           </View>
         )}
         {onboardingToast !== null && (
-          <View style={styles.onboardingToast} pointerEvents="none">
+          <View style={[styles.onboardingToast, { top: SAFE_TOP + 88 }]} pointerEvents="none">
             <Image source={IMAGES.lifeIcon} style={styles.toastIcon} resizeMode="contain" />
             <Text style={styles.toastText}>{onboardingToast}</Text>
           </View>
@@ -226,16 +258,18 @@ export const GameScreen: React.FC<Props> = ({
             ]}>
               {countdown === 0 ? 'GO!' : countdown}
             </Text>
+            {levelName && <Text style={styles.levelName}>{levelName}</Text>}
           </View>
         )}
 
       </Animated.View>
 
-      <View style={styles.hudOverlay} pointerEvents="box-none">
+      <View style={[styles.hudOverlay, { top: SAFE_TOP }]} pointerEvents="box-none">
         <HUD
           score={gameState.score}
           lives={gameState.lives}
           level={displayLevel}
+          levelName={levelName}
           worldName={worldTheme.name}
           activePowerUps={gameState.activePowerUps}
           theme={worldTheme}
@@ -245,17 +279,17 @@ export const GameScreen: React.FC<Props> = ({
       </View>
 
       {/* Pause Modal */}
-      <Modal visible={gameState.phase === 'paused'} transparent animationType="fade">
+      <Modal visible={gameState.phase === 'paused'} transparent animationType={reducedMotion ? "none" : "fade"} onRequestClose={resumeGame}>
         <View style={styles.overlay}>
           <View style={[styles.modal, { backgroundColor: worldTheme.background[1] }]}>
             <Text style={[styles.modalTitle, { color: worldTheme.ballColor }]}>Paused</Text>
-            <TouchableOpacity
+            <TouchableOpacity accessibilityRole="button"
               style={[styles.modalBtn, { backgroundColor: worldTheme.paddleColor }]}
               onPress={resumeGame}
             >
               <Text style={styles.modalBtnText}>Resume</Text>
             </TouchableOpacity>
-            <TouchableOpacity
+            <TouchableOpacity accessibilityRole="button"
               style={[
                 styles.modalBtn,
                 !canRestart && styles.modalBtnDisabled,
@@ -265,12 +299,12 @@ export const GameScreen: React.FC<Props> = ({
               disabled={!canRestart}
             >
               <Text style={styles.modalBtnText}>
-                {canRestart
+                {unlimitedEnergy ? 'Restart · Unlimited Energy' : canRestart
                   ? `Restart - Energy ${energy}/${maxEnergy}`
                   : `Next energy in ${nextEnergyMinutes}m`}
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.backBtn} onPress={onBack}>
+            <TouchableOpacity accessibilityRole="button" style={styles.backBtn} onPress={onBack}>
               <Text style={[styles.backText, { color: worldTheme.accentColor }]}>← Menu</Text>
             </TouchableOpacity>
           </View>
@@ -285,20 +319,18 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     left: 0,
-    width: SCREEN_W,
-    height: SCREEN_H,
+
     backgroundColor: '#2A0F05',
   },
   canvasWrapper: {
     position: 'absolute',
     top: 0,
     left: 0,
-    width: SCREEN_W,
-    height: SCREEN_H,
+
   },
   hudOverlay: {
     position: 'absolute',
-    top: SAFE_TOP,
+    top: 0,
     left: 0,
     right: 0,
   },
@@ -326,7 +358,7 @@ const styles = StyleSheet.create({
   },
   onboardingToast: {
     position: 'absolute',
-    top: SAFE_TOP + 88,
+    top: 88,
     left: 24,
     right: 24,
     minHeight: 58,
@@ -407,6 +439,7 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 4 },
     textShadowRadius: 16,
   },
+  levelName: { color: '#FFF6E8', fontSize: 22, fontWeight: '800', textAlign: 'center', paddingHorizontal: 24 },
   countdownGo: {
     fontSize: 80,
     letterSpacing: 4,

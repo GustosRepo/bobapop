@@ -40,6 +40,7 @@ const SOUND_ASSETS: Record<SoundEvent, ReturnType<typeof require>> = {
 
 let _soundPool: Partial<Record<SoundEvent, AudioPlayer>> = {};
 export async function preloadSounds() {
+  if (Object.keys(_soundPool).length > 0) return;
   await setAudioModeAsync({ playsInSilentMode: true });
   await Promise.all(
     (Object.keys(SOUND_ASSETS) as SoundEvent[]).map(async (key) => {
@@ -61,8 +62,7 @@ export function useSound() {
     if (!_soundEnabled) return;
     const player = _soundPool[event];
     if (player) {
-      player.seekTo(0);
-      player.play();
+      player.seekTo(0).then(() => player.play()).catch(() => {});
     }
   }, []);
 

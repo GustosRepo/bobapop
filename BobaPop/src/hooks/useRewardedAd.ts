@@ -1,228 +1,160 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Platform } from 'react-native';
+import { Alert, AppState, Platform } from 'react-native';
+import { getAdsSdk } from '../monetization/adsSdk';
 
-// react-native-google-mobile-ads is a native module — not available in Expo Go.
-// Gracefully disable ads instead of crashing when the module is missing.
-let mobileAds: typeof import('react-native-google-mobile-ads').default;
-let useAdMobRewardedAd: typeof import('react-native-google-mobile-ads').useRewardedAd;
-let TestIds: typeof import('react-native-google-mobile-ads').TestIds;
-let nativeModuleAvailable = false;
-try {
-  const adsModule = require('react-native-google-mobile-ads');
-  mobileAds = adsModule.default;
-  useAdMobRewardedAd = adsModule.useRewardedAd;
-  TestIds = adsModule.TestIds;
-  nativeModuleAvailable = true;
-} catch {
-  // Running in Expo Go or an environment without the native module.
-}
-
-const ALLOW_RELEASE_TEST_ADS = process.env.EXPO_PUBLIC_ALLOW_TEST_ADS_IN_RELEASE === 'true';
-const USE_TEST_ADS = __DEV__ || (
-  ALLOW_RELEASE_TEST_ADS && process.env.EXPO_PUBLIC_ADMOB_USE_TEST_ADS === 'true'
-);
-
-function isAdUnitId(value: string | undefined): value is string {
-  return /^ca-app-pub-\d+\/\d+$/.test(value ?? '');
-}
-
-function resolveRewardedUnitId() {
-  if (USE_TEST_ADS) return TestIds.REWARDED;
-
-  const configuredUnitId = Platform.select({
-    ios: process.env.EXPO_PUBLIC_ADMOB_REWARDED_IOS_UNIT_ID,
-    android: process.env.EXPO_PUBLIC_ADMOB_REWARDED_ANDROID_UNIT_ID,
-    default: process.env.EXPO_PUBLIC_ADMOB_REWARDED_IOS_UNIT_ID,
-  });
-
-  if (isAdUnitId(configuredUnitId)) return configuredUnitId;
-
-  if (configuredUnitId) {
-    console.warn(
-      `[ads] Ignoring invalid rewarded ad unit ID for ${Platform.OS}. ` +
-        'Rewarded ad unit IDs must use ca-app-pub-.../... format.',
-    );
-  }
-
-  console.warn(`[ads] Missing valid ${Platform.OS} rewarded ad unit ID. Rewarded ads will stay disabled.`);
-  return null;
-}
-
-const REWARDED_UNIT_ID = nativeModuleAvailable ? resolveRewardedUnitId() : null;
-const ADS_CONFIGURED = REWARDED_UNIT_ID !== null;
-
-const REQUEST_OPTIONS = { requestNonPersonalizedAdsOnly: true };
 export type RewardedAdResult = 'watched' | 'not_available' | 'skipped' | 'closed' | 'timeout' | 'error';
 export type RewardedAdStatus = 'loading' | 'ready' | 'unavailable';
-const AD_RESULT_TIMEOUT_MS = 90_000;
-const LOAD_RETRY_DELAYS_MS = [1_000, 3_000, 8_000, 15_000, 30_000];
-const LOAD_GIVE_UP_MS = 15_000;
+const RETRY_DELAYS = [1000, 3000, 8000, 15000, 30000];
 
-export function useRewardedAd() {
-  const [initialized, setInitialized] = useState(false);
-  const [initFailed, setInitFailed] = useState(false);
-  const [loadRetryAttempt, setLoadRetryAttempt] = useState(0);
-  const [loadTimedOut, setLoadTimedOut] = useState(false);
-  const loadGiveUpTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+function resolveUnitId() {
+  const sdk = getAdsSdk();
+  if (!sdk) return null;
+  if (__DEV__ || (process.env.EXPO_PUBLIC_ALLOW_TEST_ADS_IN_RELEASE === 'true'
+    && process.env.EXPO_PUBLIC_ADMOB_USE_TEST_ADS === 'true')) return sdk.TestIds.REWARDED;
+  const id = Platform.OS === 'ios'
+    ? process.env.EXPO_PUBLIC_ADMOB_REWARDED_IOS_UNIT_ID
+    : process.env.EXPO_PUBLIC_ADMOB_REWARDED_ANDROID_UNIT_ID;
+  return /^ca-app-pub-\d+\/\d+$/.test(id ?? '') ? id! : null;
+}
 
-  const stubAdHook = { isLoaded: false, isEarnedReward: false, isClosed: false, error: null as Error | null, load: () => {}, show: () => {} };
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const adHook = nativeModuleAvailable ? useAdMobRewardedAd(REWARDED_UNIT_ID ?? TestIds.REWARDED, REQUEST_OPTIONS) : stubAdHook;
-  const { isLoaded, isEarnedReward, isClosed, error, load, show } = adHook;
-  const loadRetryTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+export function useRewardedAd(enabled = true) {
+  const [status, setStatus] = useState<RewardedAdStatus>('unavailable');
+  const [privacyOptionsRequired, setPrivacyOptionsRequired] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const adRef = useRef<ReturnType<NonNullable<ReturnType<typeof getAdsSdk>>['RewardedAd']['createForAdRequest']> | null>(null);
+  const readyRef = useRef(false);
+  const pendingRef = useRef<((result: RewardedAdResult) => void) | null>(null);
+  const earnedRef = useRef(false);
+  const resultTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showingRef = useRef(false);
 
-  // Initialize once before requesting ads.
+  const settle = useCallback((result: RewardedAdResult) => {
+    if (resultTimer.current) clearTimeout(resultTimer.current);
+    resultTimer.current = null;
+    const callback = pendingRef.current;
+    pendingRef.current = null;
+    callback?.(result);
+  }, []);
+
   useEffect(() => {
-    if (!ADS_CONFIGURED) return;
-    let cancelled = false;
-    mobileAds()
-      .initialize()
-      .then(() => {
-        if (cancelled) return;
-        setInitFailed(false);
-        setInitialized(true);
-        setLoadTimedOut(false);
-        loadGiveUpTimeout.current = setTimeout(() => {
-          loadGiveUpTimeout.current = null;
-          setLoadTimedOut(true);
-        }, LOAD_GIVE_UP_MS);
-        load();
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setInitialized(false);
-          setInitFailed(true);
+    let mounted = true;
+    const sdk = getAdsSdk();
+    sdk?.AdsConsent.getConsentInfo().then((info) => {
+      if (mounted) setPrivacyOptionsRequired(info.privacyOptionsRequirementStatus === sdk.AdsConsentPrivacyOptionsRequirementStatus.REQUIRED);
+    }).catch(() => {});
+    return () => { mounted = false; };
+  }, []);
+
+  useEffect(() => {
+    const sdk = getAdsSdk();
+    const unitId = resolveUnitId();
+    readyRef.current = false;
+    if (!enabled || !sdk || !unitId) { setStatus('unavailable'); return; }
+    let disposed = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let loadTimer: ReturnType<typeof setTimeout> | undefined;
+    let unsubscribe: (() => void) | undefined;
+    let attempt = 0;
+    setStatus('loading');
+    const updateConsent = (info: Awaited<ReturnType<typeof sdk.AdsConsent.getConsentInfo>>) => {
+      if (!disposed) setPrivacyOptionsRequired(info.privacyOptionsRequirementStatus === sdk.AdsConsentPrivacyOptionsRequirementStatus.REQUIRED);
+      return info.canRequestAds;
+    };
+    const start = async () => {
+      let canRequest = false;
+      try { canRequest = updateConsent(await sdk.AdsConsent.gatherConsent()); }
+      catch { canRequest = updateConsent(await sdk.AdsConsent.getConsentInfo()); }
+      if (disposed) return;
+      if (!canRequest) { setStatus('unavailable'); return; }
+      await sdk.default().initialize();
+      if (disposed) return;
+      const ad = sdk.RewardedAd.createForAdRequest(unitId, { requestNonPersonalizedAdsOnly: true });
+      adRef.current = ad;
+      const load = () => {
+        if (disposed) return;
+        clearTimeout(loadTimer);
+        readyRef.current = false;
+        setStatus('loading');
+        loadTimer = setTimeout(() => { if (!disposed) setStatus('unavailable'); }, 15000);
+        ad.load();
+      };
+      unsubscribe = ad.addAdEventsListener(({ type }) => {
+        if (disposed) return;
+        if (type === sdk.RewardedAdEventType.LOADED) {
+          clearTimeout(loadTimer);
+          attempt = 0;
+          readyRef.current = true;
+          setStatus('ready');
+        } else if (type === sdk.RewardedAdEventType.EARNED_REWARD) {
+          earnedRef.current = true;
+        } else if (type === sdk.AdEventType.CLOSED) {
+          showingRef.current = false;
+          settle(earnedRef.current ? 'watched' : 'closed');
+          earnedRef.current = false;
+          load();
+        } else if (type === sdk.AdEventType.ERROR) {
+          showingRef.current = false;
+          readyRef.current = false;
+          clearTimeout(loadTimer);
+          setStatus('unavailable');
+          settle(earnedRef.current ? 'watched' : 'error');
+          clearTimeout(retryTimer);
+          retryTimer = setTimeout(load, RETRY_DELAYS[Math.min(attempt++, RETRY_DELAYS.length - 1)]);
         }
       });
-    return () => {
-      cancelled = true;
-      if (loadGiveUpTimeout.current) {
-        clearTimeout(loadGiveUpTimeout.current);
-        loadGiveUpTimeout.current = null;
-      }
-    };
-  }, [load]);
-
-  const clearLoadRetryTimeout = useCallback(() => {
-    if (loadRetryTimeout.current) {
-      clearTimeout(loadRetryTimeout.current);
-      loadRetryTimeout.current = null;
-    }
-  }, []);
-
-  // Reload after it closes so it's ready for next game over
-  useEffect(() => {
-    if (initialized && isClosed) load();
-  }, [initialized, isClosed, load]);
-
-  useEffect(() => {
-    if (!error) return;
-    console.warn(`[ads] Rewarded ad failed to load: ${error.message}`);
-  }, [error]);
-
-  useEffect(() => {
-    if (!ADS_CONFIGURED || !initialized || !error || isLoaded) return;
-
-    clearLoadRetryTimeout();
-    const delay = LOAD_RETRY_DELAYS_MS[Math.min(loadRetryAttempt, LOAD_RETRY_DELAYS_MS.length - 1)];
-    loadRetryTimeout.current = setTimeout(() => {
-      loadRetryTimeout.current = null;
-      setLoadRetryAttempt((attempt) => attempt + 1);
       load();
-    }, delay);
+    };
+    start().catch(() => { if (!disposed) setStatus('unavailable'); });
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && !showingRef.current && !readyRef.current) setRevision((value) => value + 1);
+    });
+    return () => {
+      disposed = true;
+      sub.remove();
+      unsubscribe?.();
+      clearTimeout(retryTimer);
+      clearTimeout(loadTimer);
+      adRef.current = null;
+      showingRef.current = false;
+      settle(earnedRef.current ? 'watched' : 'error');
+    };
+  }, [enabled, revision, settle]);
 
-    return clearLoadRetryTimeout;
-  }, [clearLoadRetryTimeout, error, initialized, isLoaded, load, loadRetryAttempt]);
-
-  useEffect(() => {
-    if (!isLoaded) return;
-    clearLoadRetryTimeout();
-    setLoadRetryAttempt(0);
-    setLoadTimedOut(false);
-    if (loadGiveUpTimeout.current) {
-      clearTimeout(loadGiveUpTimeout.current);
-      loadGiveUpTimeout.current = null;
+  const showAd = useCallback((onResult: (result: RewardedAdResult) => void) => {
+    const ad = adRef.current;
+    if (!ad || !readyRef.current || showingRef.current) { onResult('not_available'); return; }
+    if (pendingRef.current) { onResult('error'); return; }
+    readyRef.current = false;
+    showingRef.current = true;
+    setStatus('loading');
+    earnedRef.current = false;
+    pendingRef.current = onResult;
+    resultTimer.current = setTimeout(() => {
+      // A recorded reward is never discarded just because close delivery was delayed.
+      settle(earnedRef.current ? 'watched' : 'timeout');
+    }, 120000);
+    try {
+      void ad.show().catch(() => {
+        showingRef.current = false;
+        settle('error');
+        setRevision((value) => value + 1);
+      });
+    } catch {
+      showingRef.current = false;
+      settle('error');
+      setRevision((value) => value + 1);
     }
-  }, [clearLoadRetryTimeout, isLoaded]);
+  }, [settle]);
 
-  // Pending reward callback — fired when isEarnedReward flips true
-  const pendingReward = useRef<((result: RewardedAdResult) => void) | null>(null);
-  const rewardEarnedRef = useRef(false);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const clearAdTimeout = useCallback(() => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
+  const openPrivacyOptions = useCallback(async () => {
+    const sdk = getAdsSdk();
+    if (!sdk) return;
+    try {
+      const info = await sdk.AdsConsent.showPrivacyOptionsForm();
+      setPrivacyOptionsRequired(info.privacyOptionsRequirementStatus === sdk.AdsConsentPrivacyOptionsRequirementStatus.REQUIRED);
+      setRevision((value) => value + 1);
+    } catch { Alert.alert('Privacy options', 'Privacy options could not be opened. Please try again.'); }
   }, []);
 
-  const settleReward = useCallback((result: RewardedAdResult) => {
-    if (!pendingReward.current) return;
-    clearAdTimeout();
-    const callback = pendingReward.current;
-    pendingReward.current = null;
-    callback(result);
-  }, [clearAdTimeout]);
-
-  useEffect(() => {
-    if (isEarnedReward && pendingReward.current) {
-      rewardEarnedRef.current = true;
-      settleReward('watched');
-    }
-  }, [isEarnedReward, settleReward]);
-
-  useEffect(() => {
-    if (!isClosed) return;
-    if (!rewardEarnedRef.current && pendingReward.current) {
-      settleReward('closed');
-    }
-    rewardEarnedRef.current = false;
-  }, [isClosed, settleReward]);
-
-  useEffect(() => {
-    return () => {
-      clearAdTimeout();
-      clearLoadRetryTimeout();
-    };
-  }, [clearAdTimeout, clearLoadRetryTimeout]);
-
-  /**
-   * Show the rewarded ad. Rewards are granted only after the ad SDK reports
-   * an earned reward.
-   */
-  const showAd = useCallback(
-    (onResult: (result: RewardedAdResult) => void) => {
-      if (!initialized || !isLoaded) {
-        onResult('not_available');
-        if (ADS_CONFIGURED && initialized) load();
-        return;
-      }
-      if (pendingReward.current) {
-        onResult('error');
-        return;
-      }
-      pendingReward.current = onResult;
-      rewardEarnedRef.current = false;
-      timeoutRef.current = setTimeout(() => {
-        settleReward('timeout');
-        if (ADS_CONFIGURED) load();
-      }, AD_RESULT_TIMEOUT_MS);
-      try {
-        show();
-      } catch {
-        settleReward('error');
-        if (ADS_CONFIGURED) load();
-      }
-    },
-    [initialized, isLoaded, load, settleReward, show],
-  );
-
-  const status: RewardedAdStatus = !ADS_CONFIGURED || initFailed || loadTimedOut
-    ? 'unavailable'
-    : isLoaded
-    ? 'ready'
-    : 'loading';
-
-  return { isLoaded: status === 'ready', status, showAd };
+  return { status, isLoaded: status === 'ready', showAd, privacyOptionsRequired, openPrivacyOptions };
 }

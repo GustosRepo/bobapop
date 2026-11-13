@@ -2,13 +2,12 @@ import React, { memo, useRef } from 'react';
 import { View, StyleSheet, Image, ImageBackground, ImageSourcePropType } from 'react-native';
 import { GameState } from '../game/types';
 import { WorldTheme } from '../constants/themes';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { IMAGES } from '../assets/images';
 import {
   GAME_HEIGHT,
   BALL_RADIUS,
   PADDLE_Y_OFFSET,
-  BOSS_WIDTH,
-  BOSS_HEIGHT,
 } from '../constants/gameConfig';
 import { brickRect } from '../game/physics';
 
@@ -146,6 +145,7 @@ function getPaddleImageMetrics(source: ImageSourcePropType): PaddleImageMetrics 
 }
 
 export const GameCanvas: React.FC<Props> = ({ state, theme, width, height, scaleX, scaleY }) => {
+  const reducedMotion = useReducedMotion();
   const paddleY = GAME_HEIGHT - PADDLE_Y_OFFSET;
   const getBallImage = (variant?: 'default' | 'hit' | 'hot' | 'multi') => {
     if (variant === 'multi') return IMAGES.ballMulti;
@@ -181,7 +181,7 @@ export const GameCanvas: React.FC<Props> = ({ state, theme, width, height, scale
   const TRAIL_LEN = 4;
   const trailFrames: { key: string; left: number; top: number; size: number; opacity: number; scale: number }[] = [];
 
-  for (const ball of state.balls) {
+  for (const ball of reducedMotion ? [] : state.balls) {
     if (!ball.active || ball.sticky) {
       trailHistory.delete(ball.id);
       continue;
@@ -300,7 +300,7 @@ export const GameCanvas: React.FC<Props> = ({ state, theme, width, height, scale
             blockImg={blockImg}
             brickH={brickH}
             brickW={brickW}
-            flashActive={isFlashing}
+            flashActive={!reducedMotion && isFlashing}
             left={r.x * scaleX}
             opacity={opacity}
             powerUpImage={powerUpImage}
@@ -413,7 +413,7 @@ export const GameCanvas: React.FC<Props> = ({ state, theme, width, height, scale
       />
 
       {/* Particles */}
-      {state.particles.map((p) => {
+      {(reducedMotion ? [] : state.particles).map((p) => {
         const isEffect = p.kind === 'splash' || p.kind === 'burst';
         const size = isEffect ? p.radius * 14 * scaleX : p.radius * 2 * scaleX;
         const effectAngle = `${Math.atan2(p.vy, p.vx) + Math.PI}rad`;
@@ -462,6 +462,7 @@ export const GameCanvas: React.FC<Props> = ({ state, theme, width, height, scale
             />
             {/* Enrage flash + continuous pulse overlay */}
             {(() => {
+              if (reducedMotion) return null;
               const ENRAGE_FLASH_MS = 500;
               const enrageFlashActive = (now - bossEnrageRef.current.flashStart) < ENRAGE_FLASH_MS;
               const enragePulseAlpha = b.enraged && !enrageFlashActive

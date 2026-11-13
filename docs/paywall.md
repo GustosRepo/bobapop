@@ -1,89 +1,17 @@
-# BobaPop — Monetization Game Plan
+# BobaPop monetization
 
-## Stack Overview
-- **Rewarded Ads** (Google AdMob) — primary revenue driver
-- **Remove Ads IAP** ($2.99 one-time) — required by App Store if showing ads
-- **Interstitial Ads** — passive income, capped to avoid retention damage
-- No life timers — too punishing for casual audience
+The current implementation uses voluntary rewarded ads and auto-renewing BobaPop Plus subscriptions. [The app README](../BobaPop/README.md) contains setup and release instructions. This replaces the earlier one-time purchase and interstitial proposal.
 
----
+## Current behavior
 
-## Priority Order
+A free attempt costs one Energy and starts with three lives. Energy caps at five and refills every 15 minutes. The first clear of a level returns one Energy, up to the cap. Replays do not award another refund. A rewarded Energy ad adds up to two Energy, capped at five; the displayed offer reflects the remaining capacity.
 
-### Phase 1 — Rewarded Ads (do first)
-- [ ] Install `react-native-google-mobile-ads`
-- [ ] Add AdMob App ID to `app.json`
-- [ ] Create rewarded ad unit in AdMob dashboard
-- [ ] "Continue?" screen after game over — watch ad → +2 lives, resume level
-- [ ] Cap: 1 rewarded ad per game over (no infinite continues)
-- [ ] Preload rewarded ad when GameScreen mounts
+Levels 1 through 3 offer no continues. Levels 4 and 5 offer one continue. From level 6 onward, a run offers up to two continues. Every continue grants two lives, with no added countdown. Continues preserve bricks, boss damage, and score and do not spend Energy. A skipped or failed ad does not consume the offer. Perfect three-star clears require finishing without a continue.
 
-### Phase 2 — Remove Ads IAP
-- [ ] Install `expo-iap` or `react-native-purchases` (RevenueCat recommended)
-- [ ] Create "Remove Ads" product in App Store Connect ($2.99)
-- [ ] Persist `adsRemoved: boolean` in SaveData (add to v5 migration)
-- [ ] If `adsRemoved`, skip all interstitials (rewarded ads stay — user-initiated)
-- [ ] Add "Remove Ads" button to SettingsModal
+Plus uses `bobapop_plus_monthly` and `bobapop_plus_yearly`. Prices and eligible offers are loaded from the stores. Plus provides unlimited Energy for starts and retries, including when stored Energy is zero, and ad-free continues. The same continue limits apply. Expiration returns the player to the stored free Energy balance and its normal refill rules.
 
-### Phase 3 — Interstitial Ads
-- [ ] Show after every 3 level completions (not on boss levels)
-- [ ] Track `levelsSinceAd` counter in App.tsx state
-- [ ] Skip entirely if `adsRemoved = true`
-- [ ] Never show back-to-back with a rewarded ad
+Stars advance player ranks. Bobas banked from completed levels unlock profile badge styles and are never spent. Caramel unlocks at 100 bobas, Jade at 500 bobas, Taro at 30 stars, Pearl at 60 stars, and Cosmic at 120 stars. Players equip styles in their profile; these rewards do not change gameplay.
 
-### Phase 4 — Cosmetic IAPs (future)
-- [ ] Boba skin packs (ball skins, paddle skins)
-- [ ] Only after player base established — low priority
+## Store and ad setup
 
----
-
-## Ad Network
-**Google AdMob** — primary choice
-- SDK: `react-native-google-mobile-ads`
-- Docs: https://docs.page/invertase/react-native-google-mobile-ads
-- Needs: AdMob account, iOS App ID, ad unit IDs (rewarded + interstitial)
-
-**RevenueCat** — recommended for IAP
-- Handles receipt validation, restores, sandbox testing
-- SDK: `react-native-purchases`
-- Docs: https://www.revenuecat.com/docs/getting-started
-
----
-
-## Key Rules (App Store Compliance)
-- Rewarded ads must ALWAYS be voluntary — never forced
-- Must offer "Remove Ads" if showing interstitials
-- Ads must never cover gameplay or UI controls
-- Interstitials must be skippable after 5 seconds
-- No ads targeting children (COPPA) — add `tagForChildDirectedTreatment` flag
-
----
-
-## Game Over "Continue" Flow (UX)
-```
-Game Over
-    ↓
-"Watch an ad to continue?" [Watch Ad] [No Thanks]
-    ↓                           ↓
-Skip → GameOverScreen    Rewarded ad plays
-                              ↓
-                         +2 lives, resume level from current state
-                         (1 continue per level max)
-```
-
----
-
-## SaveData Changes Needed (v5)
-```ts
-adsRemoved: boolean   // unlocked via IAP
-```
-Migration: v4 → v5 adds `{ adsRemoved: false }`
-
----
-
-## Revenue Estimates (rough, casual game)
-| Source | CPM / conversion | Notes |
-|---|---|---|
-| Rewarded ads | ~$8–15 CPM | Highest paying format |
-| Interstitials | ~$3–6 CPM | Volume play |
-| Remove Ads IAP | ~5–10% of DAU | Power users |
+Store products, live AdMob IDs, applicable consent messages, and published Privacy and Terms pages must be configured in the owner's accounts. Production builds reject test IDs and release-test-ad flags. Confirm asset usage rights and complete physical-device transaction and ad tests before submission. See `npm run check:release` in the app directory.

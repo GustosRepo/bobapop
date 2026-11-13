@@ -1,3 +1,5 @@
+import { LEVELS } from '../game/levels';
+
 export type WorldTheme = {
   id: string;
   name: string;
@@ -58,6 +60,5 @@ export const WORLDS: WorldTheme[] = [
 ];
 
 export const getWorldForLevel = (levelIndex: number): WorldTheme => {
-  const worldIndex = Math.floor(levelIndex / 5);
-  return WORLDS[Math.min(worldIndex, WORLDS.length - 1)];
+  return WORLDS[LEVELS[levelIndex]?.worldIndex ?? 0];
 };

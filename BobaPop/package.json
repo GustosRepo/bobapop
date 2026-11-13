@@ -12,30 +12,40 @@
     "typecheck": "tsc --noEmit",
     "check:levels": "node scripts/check-levels.js",
     "check:save-migrations": "node scripts/check-save-migrations.js",
-    "preflight": "npm run typecheck && npm run check:levels && npm run check:save-migrations && npm audit --audit-level=moderate"
+    "preflight": "npm run typecheck && npm run check:levels && npm run check:save-migrations && npm test && npm audit --audit-level=moderate",
+    "test": "node scripts/check-regressions.js",
+    "check:release": "node scripts/check-release.js",
+    "check:asset-rights": "node scripts/check-asset-rights.js"
   },
   "dependencies": {
-    "@expo-google-fonts/nunito": "^0.4.2",
     "@react-native-async-storage/async-storage": "2.2.0",
-    "babel-preset-expo": "^55.0.17",
-    "expo": "~55.0.31",
-    "expo-asset": "~55.0.20",
-    "expo-audio": "~55.0.18",
-    "expo-font": "~55.0.6",
-    "expo-haptics": "~55.0.18",
+    "babel-preset-expo": "~58.0.0",
+    "expo": "^58.0.25",
+    "expo-asset": "~58.0.21",
+    "expo-audio": "~58.0.12",
+    "expo-dev-client": "~58.0.20",
+    "expo-font": "~58.0.12",
+    "expo-haptics": "~58.0.8",
     "expo-iap": "^4.3.1",
-    "expo-linear-gradient": "~55.0.18",
-    "expo-status-bar": "~55.0.6",
-    "react": "19.2.0",
-    "react-native": "0.83.10",
-    "react-native-google-mobile-ads": "^16.3.3"
+    "expo-linear-gradient": "~58.0.4",
+    "expo-status-bar": "~58.0.5",
+    "expo-system-ui": "~58.0.7",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native": "0.88.1",
+    "react-native-google-mobile-ads": "^16.3.3",
+    "react-native-safe-area-context": "~5.11.1",
+    "react-native-web": "^0.21.4"
   },
   "devDependencies": {
-    "@types/react": "~19.2.10",
-    "typescript": "~5.9.2"
+    "@types/react": "~19.3.0",
+    "react-test-renderer": "^19.3.0",
+    "typescript": "~6.0.3"
   },
   "overrides": {
-    "uuid": "^11.1.1"
+    "@expo/fingerprint": {
+      "minimatch": "^11.0.1"
+    }
   },
   "private": true
 }

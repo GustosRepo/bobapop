@@ -1,7 +1,9 @@
+import { openExternalLink } from '../utils/openExternalLink';
 import React from 'react';
 import {
   Image,
-  Linking,
+  Platform,
+  ScrollView,
   Modal,
   StyleSheet,
   Text,
@@ -24,9 +26,12 @@ interface Props {
   plans: PlusPlan[];
   busyPlanId: PlusPlanId | null;
   storeMessage: string | null;
+  restoring: boolean;
+  storeConnected: boolean;
   onClose: () => void;
   onSelectPlan: (planId: PlusPlanId) => void;
   onRestore: () => void;
+  onReloadProducts: () => void;
 }
 
 export const PlusPaywallModal: React.FC<Props> = ({
@@ -35,9 +40,12 @@ export const PlusPaywallModal: React.FC<Props> = ({
   plans,
   busyPlanId,
   storeMessage,
+  restoring,
+  storeConnected,
   onClose,
   onSelectPlan,
   onRestore,
+  onReloadProducts,
 }) => {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -47,13 +55,14 @@ export const PlusPaywallModal: React.FC<Props> = ({
             colors={['#FFF7E8', '#F6D6A8', '#C8873E']}
             style={StyleSheet.absoluteFill}
           />
-          <TouchableOpacity style={styles.closeBtn} onPress={onClose} activeOpacity={0.8}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close Plus plans" style={styles.closeBtn} onPress={onClose} activeOpacity={0.8}>
             <Text style={styles.closeText}>×</Text>
           </TouchableOpacity>
 
+          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <Image source={IMAGES.mascotHappy} style={styles.mascot} resizeMode="contain" />
           <Text style={styles.title}>BobaPop Plus</Text>
-          <Text style={styles.subtitle}>More popping. Less waiting.</Text>
+          <Text style={styles.subtitle}>Unlimited Energy. More popping.</Text>
 
           <View style={styles.benefits}>
             {PLUS_BENEFITS.map((benefit) => (
@@ -67,20 +76,22 @@ export const PlusPaywallModal: React.FC<Props> = ({
           {plusActive ? (
             <View style={styles.activeCard}>
               <Text style={styles.activeTitle}>Plus is active</Text>
-              <Text style={styles.activeText}>Your continues are ad-free.</Text>
+              <Text style={styles.activeText}>Unlimited starts and retries, with ad-free continues.</Text>
             </View>
           ) : (
             <View style={styles.planList}>
               {plans.map((plan) => (
                 <TouchableOpacity
                   key={plan.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${plan.title} plan, ${plan.price} per ${plan.period}`}
                   style={[
                     styles.planCard,
                     plan.badge && styles.planCardFeatured,
-                    busyPlanId !== null && styles.planCardDisabled,
+                    (busyPlanId !== null || restoring || !plan.available || !storeConnected) && styles.planCardDisabled,
                   ]}
                   onPress={() => onSelectPlan(plan.id)}
-                  disabled={busyPlanId !== null}
+                  disabled={busyPlanId !== null || restoring || !plan.available || !storeConnected}
                   activeOpacity={0.86}
                 >
                   {plan.badge && (
@@ -103,27 +114,36 @@ export const PlusPaywallModal: React.FC<Props> = ({
             </View>
           )}
 
+          {!plusActive && !plans.some((plan) => plan.available) && (
+            <View>
+              <Text style={styles.storeMessage}>{Platform.OS === 'web' ? 'Plus purchases are available in the iOS and Android app.' : 'Plans are currently unavailable from the store.'}</Text>
+              {Platform.OS !== 'web' && storeConnected && <TouchableOpacity accessibilityRole="button" onPress={onReloadProducts} style={styles.restoreBtn}><Text style={styles.restoreText}>Reload plans</Text></TouchableOpacity>}
+            </View>
+          )}
+
           {storeMessage !== null && (
             <Text style={styles.storeMessage}>{storeMessage}</Text>
           )}
 
-          <TouchableOpacity style={styles.restoreBtn} onPress={onRestore} activeOpacity={0.8}>
-            <Text style={styles.restoreText}>Restore Purchase</Text>
+          <TouchableOpacity accessibilityRole="button" disabled={!storeConnected || restoring || busyPlanId !== null} style={styles.restoreBtn} onPress={onRestore} activeOpacity={0.8}>
+            <Text style={styles.restoreText}>{restoring ? 'Restoring…' : 'Restore Purchase'}</Text>
           </TouchableOpacity>
 
+          <Text style={styles.termsText}>Unlimited Energy covers starts and retries. Continue limits still apply; continues unlock at Level 4.</Text>
           <Text style={styles.termsText}>
             Renews automatically unless canceled at least 24 hours before the end of the current period.
-            Manage or cancel anytime in App Store settings.
+            {Platform.OS === 'android' ? ' Manage or cancel in Google Play subscriptions.' : Platform.OS === 'ios' ? ' Manage or cancel in App Store settings.' : ' Manage your subscription in the store where you purchased it.'}
           </Text>
           <View style={styles.linksRow}>
-            <TouchableOpacity onPress={() => Linking.openURL(TERMS_URL)}>
+            <TouchableOpacity accessibilityRole="button" onPress={() => openExternalLink(TERMS_URL)}>
               <Text style={styles.linkText}>Terms</Text>
             </TouchableOpacity>
             <Text style={styles.linkDivider}>•</Text>
-            <TouchableOpacity onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}>
+            <TouchableOpacity accessibilityRole="button" onPress={() => openExternalLink(PRIVACY_POLICY_URL)}>
               <Text style={styles.linkText}>Privacy</Text>
             </TouchableOpacity>
           </View>
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -143,19 +163,18 @@ const styles = StyleSheet.create({
     maxWidth: 390,
     borderRadius: 28,
     overflow: 'hidden',
-    paddingHorizontal: 22,
-    paddingTop: 22,
-    paddingBottom: 20,
+    maxHeight: '90%',
     borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0.7)',
   },
+  content: { paddingHorizontal: 22, paddingTop: 54, paddingBottom: 20 },
   closeBtn: {
     position: 'absolute',
     top: 12,
     right: 12,
     zIndex: 2,
-    width: 34,
-    height: 34,
+    width: 44,
+    height: 44,
     borderRadius: 17,
     backgroundColor: 'rgba(70, 30, 10, 0.28)',
     alignItems: 'center',
@@ -222,6 +241,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   planCard: {
+    flexWrap: 'wrap',
+    gap: 12,
     minHeight: 70,
     borderRadius: 18,
     backgroundColor: 'rgba(70, 30, 10, 0.88)',
@@ -268,7 +289,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   planPriceWrap: {
-    flexDirection: 'row',
+    flexDirection: 'column',
+    flexShrink: 1,
     alignItems: 'flex-end',
   },
   planPrice: {

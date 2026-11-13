@@ -8,6 +8,7 @@ interface Props {
   score: number;
   lives: number;
   level: number;
+  levelName?: string;
   worldName: string;
   activePowerUps: ActivePowerUp[];
   theme: WorldTheme;
@@ -26,20 +27,21 @@ export const HUD: React.FC<Props> = ({
   score,
   lives,
   level,
+  levelName,
   worldName,
   activePowerUps,
   theme,
   boss,
   onPause,
 }) => {
-  const now = Date.now();
 
   return (
     <View style={styles.container}>
       <View style={styles.topRow}>
-        <View>
+        <View style={{ maxWidth: '40%', flexShrink: 1 }}>
           <Text style={[styles.worldName, { color: theme.accentColor }]}>{worldName}</Text>
           <Text style={[styles.levelText, { color: theme.ballColor }]}>Level {level}</Text>
+          {levelName && <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '700', color: theme.ballColor }}>{levelName}</Text>}
         </View>
         <View style={styles.scoreBlock}>
           <Text style={[styles.score, { color: theme.ballColor }]}>{score.toLocaleString()}</Text>
@@ -49,7 +51,7 @@ export const HUD: React.FC<Props> = ({
             {Array.from({ length: lives }).map((_, i) => (
               <Image key={i} source={IMAGES.lifeIcon} style={styles.lifeIcon} resizeMode="contain" />
             ))}
-            <TouchableOpacity onPress={onPause} style={styles.pauseBtn}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Pause game" onPress={onPause} style={styles.pauseBtn}>
               <Image source={IMAGES.pauseBtn} style={styles.pauseIcon} resizeMode="contain" />
             </TouchableOpacity>
           </View>

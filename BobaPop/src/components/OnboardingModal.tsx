@@ -1,7 +1,8 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
   Animated,
-  Dimensions,
+  useWindowDimensions,
+  ScrollView,
   Image,
   ImageSourcePropType,
   Modal,
@@ -12,6 +13,8 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { IMAGES } from '../assets/images';
 
 interface Props {
@@ -28,7 +31,7 @@ interface Slide {
   supportingArt?: ImageSourcePropType;
 }
 
-const { width: SW, height: SH } = Dimensions.get('window');
+
 
 const SLIDES: Slide[] = [
   {
@@ -66,7 +69,7 @@ const SLIDES: Slide[] = [
   {
     eyebrow: 'Energy',
     title: 'Fresh tries refill',
-    body: 'Starting or retrying spends Energy. Ads continue the same run with extra lives.',
+    body: 'Each try starts with 3 lives. First clears return 1 Energy. Watch an ad for +2 Energy or a +2-life continue from Level 4.',
     art: IMAGES.effectBurst,
     accent: '#B85B16',
     supportingArt: IMAGES.mascotExcited,
@@ -74,6 +77,9 @@ const SLIDES: Slide[] = [
 ];
 
 export const OnboardingModal: React.FC<Props> = ({ visible, onDone }) => {
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const reducedMotion = useReducedMotion();
   const [index, setIndex] = useState(0);
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slide = SLIDES[index];
@@ -81,6 +87,7 @@ export const OnboardingModal: React.FC<Props> = ({ visible, onDone }) => {
   const dots = useMemo(() => SLIDES.map((_, i) => i), []);
 
   const moveTo = (nextIndex: number) => {
+    if (reducedMotion) { setIndex(nextIndex); return; }
     Animated.timing(fadeAnim, {
       toValue: 0,
       duration: 120,
@@ -104,7 +111,7 @@ export const OnboardingModal: React.FC<Props> = ({ visible, onDone }) => {
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
+    <Modal visible={visible} transparent animationType={reducedMotion ? "none" : "fade"} statusBarTranslucent onRequestClose={onDone}>
       <View style={styles.root}>
         <LinearGradient
           colors={['#2A0F05', '#7A421C', '#F2BE68']}
@@ -116,6 +123,7 @@ export const OnboardingModal: React.FC<Props> = ({ visible, onDone }) => {
           style={StyleSheet.absoluteFill}
         />
 
+        <ScrollView contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top, paddingBottom: insets.bottom + 12 }}>
         <View style={styles.topRow}>
           <Text style={styles.brand}>BobaPop</Text>
           <Pressable onPress={onDone} hitSlop={14}>
@@ -128,7 +136,7 @@ export const OnboardingModal: React.FC<Props> = ({ visible, onDone }) => {
             <Text style={[styles.eyebrow, { color: slide.accent }]}>{slide.eyebrow}</Text>
           </View>
 
-          <View style={styles.artStage}>
+          <View style={[styles.artStage, { width: Math.min(310, width - 60), height: Math.min(280, height * 0.32) }]}>
             <View style={[styles.artGlow, { backgroundColor: slide.accent }]} />
             {slide.supportingArt && (
               <Image source={slide.supportingArt} style={styles.supportingArt} resizeMode="contain" />
@@ -153,7 +161,7 @@ export const OnboardingModal: React.FC<Props> = ({ visible, onDone }) => {
             ))}
           </View>
 
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button"
             style={styles.primaryBtn}
             onPress={handlePrimary}
             activeOpacity={0.86}
@@ -167,6 +175,7 @@ export const OnboardingModal: React.FC<Props> = ({ visible, onDone }) => {
             <Text style={styles.primaryText}>{isLast ? 'Start Popping' : 'Next'}</Text>
           </TouchableOpacity>
         </View>
+        </ScrollView>
       </View>
     </Modal>
   );
@@ -174,14 +183,14 @@ export const OnboardingModal: React.FC<Props> = ({ visible, onDone }) => {
 
 const styles = StyleSheet.create({
   root: {
-    width: SW,
-    height: SH,
-    paddingTop: 58,
+    width: '100%',
+    height: '100%',
+    paddingTop: 0,
     paddingHorizontal: 24,
-    paddingBottom: 34,
+    paddingBottom: 0,
   },
   bgImage: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     opacity: 0.26,
   },
   topRow: {
@@ -219,8 +228,8 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   artStage: {
-    width: Math.min(310, SW - 60),
-    height: Math.min(280, SH * 0.32),
+    width: 310,
+    height: 280,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 18,

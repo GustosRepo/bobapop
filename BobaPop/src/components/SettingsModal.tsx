@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Animated,
   Switch,
-  Linking,
   Image,
   ImageSourcePropType,
   Platform,
@@ -15,6 +14,10 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useReducedMotion } from '../hooks/useReducedMotion';
+import { PRIVACY_POLICY_URL, TERMS_URL } from '../monetization/plus';
+import { openExternalLink } from '../utils/openExternalLink';
 import { IMAGES } from '../assets/images';
 
 interface Props {
@@ -22,6 +25,8 @@ interface Props {
   soundEnabled: boolean;
   hapticsEnabled: boolean;
   plusActive: boolean;
+  privacyOptionsRequired: boolean;
+  onOpenPrivacy: () => void;
   onClose: () => void;
   onUpdateSettings: (sound: boolean, haptics: boolean) => void;
   onOpenPlus: () => void;
@@ -32,14 +37,19 @@ export const SettingsModal: React.FC<Props> = ({
   soundEnabled,
   hapticsEnabled,
   plusActive,
+  privacyOptionsRequired,
+  onOpenPrivacy,
   onClose,
   onUpdateSettings,
   onOpenPlus,
 }) => {
+  const insets = useSafeAreaInsets();
+  const reducedMotion = useReducedMotion();
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    if (visible && reducedMotion) { scaleAnim.setValue(1); opacityAnim.setValue(1); return; }
     if (visible) {
       Animated.parallel([
         Animated.spring(scaleAnim, { toValue: 1, speed: 16, bounciness: 8, useNativeDriver: true }),
@@ -49,7 +59,7 @@ export const SettingsModal: React.FC<Props> = ({
       scaleAnim.setValue(0.85);
       opacityAnim.setValue(0);
     }
-  }, [visible]);
+  }, [visible, reducedMotion]);
 
   const toggleSound = () => {
     if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -64,11 +74,11 @@ export const SettingsModal: React.FC<Props> = ({
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose}>
+      <TouchableOpacity accessibilityRole="button" style={styles.backdrop} activeOpacity={1} onPress={onClose}>
         <Animated.View
           style={[styles.sheet, { transform: [{ scale: scaleAnim }], opacity: opacityAnim }]}
         >
-          <TouchableOpacity activeOpacity={1} style={styles.sheetTouch}>
+          <TouchableOpacity accessibilityRole="button" activeOpacity={1} style={styles.sheetTouch}>
             <LinearGradient
               colors={['#FFF8F0', '#FFF1DC']}
               style={StyleSheet.absoluteFill}
@@ -77,7 +87,7 @@ export const SettingsModal: React.FC<Props> = ({
             <ScrollView
               bounces={false}
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.sheetContent}
+              contentContainerStyle={[styles.sheetContent, { paddingBottom: Math.max(22, insets.bottom) }]}
             >
               {/* Handle */}
               <View style={styles.handle} />
@@ -89,7 +99,7 @@ export const SettingsModal: React.FC<Props> = ({
               <View style={styles.section}>
                 <SettingsActionRow
                   label={plusActive ? 'BobaPop Plus Active' : 'BobaPop Plus'}
-                  detail={plusActive ? 'Ad-free continues enabled' : 'Ad-free continues and no waits'}
+                  detail={plusActive ? 'Unlimited Energy and ad-free continues enabled' : 'Unlimited Energy and ad-free continues'}
                   icon={IMAGES.mascotHappy}
                   onPress={onOpenPlus}
                 />
@@ -109,12 +119,18 @@ export const SettingsModal: React.FC<Props> = ({
                 />
               </View>
 
+              <View style={styles.section}>
+                <SettingsActionRow label="Privacy Policy" detail="How BobaPop uses data" icon={IMAGES.settingsBtn} onPress={() => openExternalLink(PRIVACY_POLICY_URL)} />
+                <SettingsActionRow label="Terms" detail="Subscription and app terms" icon={IMAGES.settingsBtn} onPress={() => openExternalLink(TERMS_URL)} />
+                {privacyOptionsRequired && <SettingsActionRow label="Ad privacy choices" detail="Review your advertising privacy choices" icon={IMAGES.settingsBtn} onPress={() => { onClose(); setTimeout(onOpenPrivacy, 350); }} />}
+              </View>
+
               {/* ── Credits ── */}
               <View style={styles.section}>
                 <Text style={styles.sectionLabel}>About</Text>
-                <TouchableOpacity
+                <TouchableOpacity accessibilityRole="button"
                   style={styles.creditRow}
-                  onPress={() => Linking.openURL('https://codewerx.com')}
+                  onPress={() => openExternalLink('https://codewerx.com')}
                   activeOpacity={0.7}
                 >
                   <Text style={styles.creditText}>Made by CODEWERX LLC</Text>
@@ -127,7 +143,7 @@ export const SettingsModal: React.FC<Props> = ({
               </View>
 
               {/* ── Close ── */}
-              <TouchableOpacity
+              <TouchableOpacity accessibilityRole="button"
                 style={styles.closeBtn}
                 onPress={() => {
                   if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -163,6 +179,7 @@ const SettingsRow: React.FC<RowProps> = ({ label, icon, value, onToggle }) => (
     <Image source={icon} style={styles.rowIcon} resizeMode="contain" />
     <Text style={styles.rowLabel}>{label}</Text>
     <Switch
+      accessibilityLabel={label}
       value={value}
       onValueChange={onToggle}
       trackColor={{ false: '#D4BFA0', true: '#8B4513' }}
@@ -180,7 +197,7 @@ interface ActionRowProps {
 }
 
 const SettingsActionRow: React.FC<ActionRowProps> = ({ label, detail, icon, onPress }) => (
-  <TouchableOpacity style={[styles.row, styles.actionRow]} onPress={onPress} activeOpacity={0.78}>
+  <TouchableOpacity accessibilityRole="button" style={[styles.row, styles.actionRow]} onPress={onPress} activeOpacity={0.78}>
     <Image source={icon} style={styles.actionIcon} resizeMode="contain" />
     <View style={styles.actionTextWrap}>
       <Text style={styles.actionLabel}>{label}</Text>

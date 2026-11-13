@@ -4,8 +4,10 @@ const TEST_ANDROID_ADMOB_APP_ID = 'ca-app-pub-3940256099942544~3347511713';
 const TEST_IOS_ADMOB_APP_ID = 'ca-app-pub-3940256099942544~1458002511';
 
 function resolveAdMobAppId(platform, envValue, testValue) {
-  if (envValue) return envValue;
-  if (!IS_PRODUCTION_BUILD || EAS_BUILD_PLATFORM !== platform) return testValue;
+  const required = IS_PRODUCTION_BUILD && (!EAS_BUILD_PLATFORM || EAS_BUILD_PLATFORM === platform);
+  if (envValue && /^ca-app-pub-\d+~\d+$/.test(envValue) && !envValue.includes('0000000000000000')
+    && (!required || !envValue.includes('3940256099942544'))) return envValue;
+  if (!required) return testValue;
   throw new Error(`Missing EXPO_PUBLIC_ADMOB_${platform.toUpperCase()}_APP_ID for production builds.`);
 }
 
@@ -21,7 +23,20 @@ const PROD_IOS_ADMOB_APP_ID = resolveAdMobAppId(
   TEST_IOS_ADMOB_APP_ID,
 );
 
+if (IS_PRODUCTION_BUILD) {
+  if (process.env.EXPO_PUBLIC_ALLOW_TEST_ADS_IN_RELEASE === 'true' || process.env.EXPO_PUBLIC_ADMOB_USE_TEST_ADS === 'true') {
+    throw new Error('Production builds must disable release test ads. Use a preview build for test ads.');
+  }
+  for (const platform of EAS_BUILD_PLATFORM ? [EAS_BUILD_PLATFORM] : ['ios', 'android']) {
+    const unit = process.env[`EXPO_PUBLIC_ADMOB_REWARDED_${platform.toUpperCase()}_UNIT_ID`];
+    if (!/^ca-app-pub-\d+\/\d+$/.test(unit ?? '') || /3940256099942544|0000000000000000/.test(unit)) {
+      throw new Error(`Missing live rewarded ad unit ID for ${platform}.`);
+    }
+  }
+}
+
 const GOOGLE_MOBILE_ADS_CONFIG = {
+  delayAppMeasurementInit: true,
   androidAppId: PROD_ANDROID_ADMOB_APP_ID,
   iosAppId: PROD_IOS_ADMOB_APP_ID,
   android_app_id: PROD_ANDROID_ADMOB_APP_ID,
@@ -36,7 +51,6 @@ module.exports = {
     orientation: 'portrait',
     icon: './assets/icon.png',
     userInterfaceStyle: 'dark',
-    newArchEnabled: true,
     splash: {
       image: './assets/splash-icon.png',
       resizeMode: 'contain',
@@ -57,13 +71,14 @@ module.exports = {
         foregroundImage: './assets/adaptive-icon.png',
         backgroundColor: '#2A0F05',
       },
-      edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
     },
     web: {
       favicon: './assets/favicon.png',
     },
     plugins: [
+      'expo-asset',
+      'expo-status-bar',
       'expo-font',
       ['expo-audio', {
         microphonePermission: false,
@@ -74,6 +89,7 @@ module.exports = {
       ['react-native-google-mobile-ads', GOOGLE_MOBILE_ADS_CONFIG],
     ],
     'react-native-google-mobile-ads': {
+      delay_app_measurement_init: true,
       android_app_id: PROD_ANDROID_ADMOB_APP_ID,
       ios_app_id: PROD_IOS_ADMOB_APP_ID,
     },

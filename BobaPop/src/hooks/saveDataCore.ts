@@ -1,11 +1,31 @@
 // ─── Save format versioning ────────────────────────────────────────────────────
 //  Bump CURRENT_VERSION whenever SaveData gains new required fields.
 //  Add a migration case below so old saves are upgraded rather than wiped.
-export const CURRENT_VERSION = 8;
+import { BADGE_STYLES, BadgeStyleId } from '../game/badgeRewards';
+
+export const CURRENT_VERSION = 10;
 export const STORAGE_KEY = '@bobapop_save_v1';   // key never changes; version lives inside the JSON
 export const BACKUP_STORAGE_KEY = '@bobapop_save_backup_v1';
 export const MAX_ENERGY = 5;
 export const ENERGY_REFILL_MS = 15 * 60 * 1000;
+
+export class UnsupportedSaveVersionError extends Error {}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function boundedInteger(value: unknown, fallback: number, max = Number.MAX_SAFE_INTEGER): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.min(max, Math.max(0, Math.floor(value))) : fallback;
+}
+
+function numericRecord(value: unknown, max = Number.MAX_SAFE_INTEGER): Record<string, number> {
+  if (!isRecord(value)) return {};
+  return Object.fromEntries(Object.entries(value)
+    .filter(([, item]) => typeof item === 'number' && Number.isFinite(item))
+    .map(([key, item]) => [key, boundedInteger(item, 0, max)]));
+}
 
 export interface SaveData {
   version: number;
@@ -16,10 +36,12 @@ export interface SaveData {
   levelStarsById: Record<string, number>;
   levelHighScoresById: Record<string, number>;
   totalBobas: number;                      // lifetime brick pop count
+  selectedBadgeId: BadgeStyleId;
   seenWorlds: number[];                    // world indices whose intro has been shown
   soundEnabled: boolean;
   hapticsEnabled: boolean;
   adsRemoved: boolean;
+  plusExpiresAt: number | null;
   seenOnboarding: Record<string, boolean>;
   energyLives: number;                     // persisted legacy field name; UI calls this Energy
   energyUpdatedAt: number;
@@ -35,10 +57,12 @@ export function buildDefaultSave(levelIds: string[], now = Date.now()): SaveData
     levelStarsById: {},
     levelHighScoresById: {},
     totalBobas: 0,
+    selectedBadgeId: 'classic',
     seenWorlds: [],
     soundEnabled: true,
     hapticsEnabled: true,
     adsRemoved: false,
+    plusExpiresAt: null,
     seenOnboarding: {},
     energyLives: MAX_ENERGY,
     energyUpdatedAt: now,
@@ -81,8 +105,14 @@ function unlockedIdsFromLegacyIndex(unlockedUpTo: number, levelIds: string[]): s
 // Each function receives the raw parsed object and returns a migrated SaveData.
 // Add one entry per version bump.
 export function migrateSaveData(raw: Record<string, unknown>, levelIds: string[], now = Date.now()): SaveData {
+  if (!isRecord(raw)) throw new Error('Invalid save data.');
+  if (typeof raw.version === 'number' && raw.version > CURRENT_VERSION) {
+    throw new UnsupportedSaveVersionError('This progress was saved by a newer version. Update BobaPop to continue.');
+  }
   let data = { ...raw } as unknown as SaveData;
   const defaultSave = buildDefaultSave(levelIds, now);
+  data.version = boundedInteger(data.version, 0, CURRENT_VERSION);
+  data.unlockedUpTo = boundedInteger(data.unlockedUpTo, 0, Math.max(0, levelIds.length - 1));
 
   // v0 -> v1: levelStars may be missing
   if (!data.version || data.version < 1) {
@@ -140,17 +170,44 @@ export function migrateSaveData(raw: Record<string, unknown>, levelIds: string[]
     };
   }
 
+  if (data.version < 9) data = { ...data, plusExpiresAt: null, version: 9 };
+  if (data.version < 10) data = { ...data, selectedBadgeId: 'classic', version: 10 };
+
   const unlockedLevelIds = Array.isArray(data.unlockedLevelIds)
     ? data.unlockedLevelIds.filter((id): id is string => typeof id === 'string' && levelIds.includes(id))
     : defaultSave.unlockedLevelIds;
+  const levelStarsById = numericRecord(data.levelStarsById, 3);
+  const unlocked = new Set(unlockedLevelIds.length > 0 ? unlockedLevelIds : defaultSave.unlockedLevelIds);
+  // A save that finished the old campaign must unlock newly appended content.
+  levelIds.forEach((id, index) => {
+    if ((levelStarsById[id] ?? 0) <= 0) return;
+    unlocked.add(id);
+    const nextId = levelIds[index + 1];
+    if (nextId) unlocked.add(nextId);
+  });
 
   return {
     ...defaultSave,
-    ...data,
     version: CURRENT_VERSION,
-    unlockedLevelIds: unlockedLevelIds.length > 0 ? unlockedLevelIds : defaultSave.unlockedLevelIds,
-    levelStarsById: typeof data.levelStarsById === 'object' && data.levelStarsById !== null ? data.levelStarsById : {},
-    levelHighScoresById: typeof data.levelHighScoresById === 'object' && data.levelHighScoresById !== null ? data.levelHighScoresById : {},
+    unlockedUpTo: data.unlockedUpTo,
+    unlockedLevelIds: [...unlocked],
+    levelStars: numericRecord(data.levelStars, 3),
+    levelHighScores: numericRecord(data.levelHighScores),
+    levelStarsById,
+    levelHighScoresById: numericRecord(data.levelHighScoresById),
+    totalBobas: boundedInteger(data.totalBobas, 0),
+    selectedBadgeId: BADGE_STYLES.some((badge) => badge.id === data.selectedBadgeId) ? data.selectedBadgeId : 'classic',
+    seenWorlds: Array.isArray(data.seenWorlds)
+      ? [...new Set(data.seenWorlds.filter((value) => Number.isInteger(value) && value >= 0 && value < 4))] : [],
+    soundEnabled: typeof data.soundEnabled === 'boolean' ? data.soundEnabled : true,
+    hapticsEnabled: typeof data.hapticsEnabled === 'boolean' ? data.hapticsEnabled : true,
+    adsRemoved: data.adsRemoved === true && !(typeof data.plusExpiresAt === 'number' && data.plusExpiresAt <= now),
+    plusExpiresAt: typeof data.plusExpiresAt === 'number' && Number.isFinite(data.plusExpiresAt) && data.plusExpiresAt > 0 ? data.plusExpiresAt : null,
+    seenOnboarding: isRecord(data.seenOnboarding)
+      ? Object.fromEntries(Object.entries(data.seenOnboarding).filter(([, value]) => typeof value === 'boolean')) : {},
+    energyLives: boundedInteger(data.energyLives, MAX_ENERGY, MAX_ENERGY),
+    energyUpdatedAt: typeof data.energyUpdatedAt === 'number' && Number.isFinite(data.energyUpdatedAt)
+      ? Math.max(0, Math.min(now, data.energyUpdatedAt)) : now,
   };
 }
 

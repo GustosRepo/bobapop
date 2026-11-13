@@ -1,25 +1,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppState } from 'react-native';
+import { BADGE_STYLES, BadgeStyleId, getBadgeStyle, isBadgeUnlocked } from '../game/badgeRewards';
+import { createSaveWriter, loadSavedProgress } from './saveStorage';
+import { CompletionReward, EnergyGrant, FIRST_CLEAR_ENERGY_REFUND, hasUnlimitedEnergy } from '../monetization/economy';
 import {
-  BACKUP_STORAGE_KEY,
   ENERGY_REFILL_MS,
   MAX_ENERGY,
-  STORAGE_KEY,
   SaveData,
   buildDefaultSave,
   mapLevelIdsToIndexRecord,
-  migrateSaveData,
   resolveEnergy,
 } from './saveDataCore';
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 interface UseSaveDataReturn {
   loading: boolean;
+  ready: boolean;
+  saveError: string | null;
+  retrySave: () => void;
   unlockedUpTo: number;
   unlockedLevelIds: string[];
   levelStars: Record<number, number>;
   levelHighScores: Record<number, number>;
   totalBobas: number;
+  selectedBadgeId: BadgeStyleId;
+  selectBadge: (id: BadgeStyleId) => boolean;
   seenWorlds: number[];
   soundEnabled: boolean;
   hapticsEnabled: boolean;
@@ -28,11 +34,11 @@ interface UseSaveDataReturn {
   energy: number;
   maxEnergy: number;
   nextEnergyInMs: number;
-  setAdsRemovedEntitlement: (active: boolean) => void;
+  setAdsRemovedEntitlement: (active: boolean, expiresAt?: number | null) => void;
   isLevelUnlocked: (levelIndex: number) => boolean;
   spendEnergy: () => boolean;
-  addEnergy: (amount?: number) => boolean;
-  recordLevelComplete: (levelIndex: number, stars: number, score: number, bricksPopped: number) => void;
+  addEnergy: (amount?: number) => EnergyGrant;
+  recordLevelComplete: (levelIndex: number, stars: number, score: number, bricksPopped: number) => CompletionReward;
   markWorldSeen: (worldIndex: number) => void;
   markOnboardingSeen: (key: string) => void;
   updateSettings: (sound: boolean, haptics: boolean) => void;
@@ -43,72 +49,73 @@ export function useSaveData(devUnlockAll: boolean, levelIds: string[]): UseSaveD
   const [save, setSave] = useState<SaveData>(() => buildDefaultSave(levelIds));
   const [energyNow, setEnergyNow] = useState(Date.now());
 
-  // Keep a ref so callbacks always see latest save without re-creating themselves
   const saveRef = useRef<SaveData>(save);
-  saveRef.current = save;
+  const hydratedRef = useRef(false);
+  const pendingEntitlementRef = useRef<{ active: boolean; expiresAt: number | null } | null>(null);
+  const writer = useMemo(() => createSaveWriter(AsyncStorage), []);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
-  // ── Load on mount ───────────────────────────────────────────────────────────
-  useEffect(() => {
-    (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(STORAGE_KEY);
-        if (raw !== null) {
-          const parsed = JSON.parse(raw) as Record<string, unknown>;
-          const migrated = resolveEnergy(migrateSaveData(parsed, levelIds));
-          if (JSON.stringify(parsed) !== JSON.stringify(migrated)) {
-            await AsyncStorage.setItem(BACKUP_STORAGE_KEY, raw);
-            await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
-          }
-          setSave(migrated);
-          saveRef.current = migrated;
-        }
-      } catch (e) {
-        const backupRaw = await AsyncStorage.getItem(BACKUP_STORAGE_KEY).catch(() => null);
-        if (backupRaw !== null) {
-          try {
-            const backupParsed = JSON.parse(backupRaw) as Record<string, unknown>;
-            const restored = resolveEnergy(migrateSaveData(backupParsed, levelIds));
-            await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(restored));
-            setSave(restored);
-            saveRef.current = restored;
-            if (__DEV__) console.warn('[SaveData] Restored save from backup after primary load failed:', e);
-          } catch (backupError) {
-            if (__DEV__) console.warn('[SaveData] Failed to load primary and backup saves, using defaults:', e, backupError);
-          }
-        } else if (__DEV__) {
-          console.warn('[SaveData] Failed to load, using defaults:', e);
-        }
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [levelIds]);
-
-  useEffect(() => {
-    const timer = setInterval(() => setEnergyNow(Date.now()), 30 * 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  // ── Persist helper ──────────────────────────────────────────────────────────
   const persist = useCallback((next: SaveData) => {
-    setSave(next);
+    if (!hydratedRef.current) return;
     saveRef.current = next;
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)).catch((e) => {
-      if (__DEV__) console.warn('[SaveData] Failed to persist:', e);
+    setSave(next);
+    writer(next).then(() => setSaveError(null)).catch(() => {
+      setSaveError('Progress could not be saved. Keep BobaPop open and tap Retry.');
     });
+  }, [writer]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    loadSavedProgress(AsyncStorage, levelIds).then(({ save: loaded }) => {
+      if (cancelled) return;
+      const entitlement = pendingEntitlementRef.current;
+      pendingEntitlementRef.current = null;
+      hydratedRef.current = true;
+      persist(entitlement === null ? loaded : { ...loaded, adsRemoved: entitlement.active, plusExpiresAt: entitlement.expiresAt });
+    }).catch((error) => {
+      if (!cancelled) setSaveError(error instanceof Error ? error.message : 'Progress could not be loaded. Please retry.');
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [levelIds, loadAttempt, persist]);
+
+  const retrySave = useCallback(() => {
+    if (hydratedRef.current) persist(saveRef.current);
+    else setLoadAttempt((attempt) => attempt + 1);
+  }, [persist]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setEnergyNow(Date.now()), 1000);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') setEnergyNow(Date.now());
+    });
+    return () => { clearInterval(timer); sub.remove(); };
   }, []);
 
   // ── Public action ───────────────────────────────────────────────────────────
   const recordLevelComplete = useCallback((levelIndex: number, stars: number, score: number, bricksPopped: number) => {
-    const prev = saveRef.current;
+    const prev = resolveEnergy(saveRef.current);
     const levelId = levelIds[levelIndex];
-    if (!levelId) return;
+    if (!hydratedRef.current || !levelId) return { firstClear: false, energyRefund: 0, badgeUnlocks: [] };
+    const firstClear = (prev.levelStarsById[levelId] ?? 0) === 0;
+    const energyRefund = firstClear && !hasUnlimitedEnergy(prev)
+      ? Math.min(FIRST_CLEAR_ENERGY_REFUND, MAX_ENERGY - prev.energyLives) : 0;
+    const energyLives = prev.energyLives + energyRefund;
+    const previousStars = levelIds.reduce((total, id) => total + (prev.levelStarsById[id] ?? 0), 0);
+    const nextStars = previousStars + Math.max(0, stars - (prev.levelStarsById[levelId] ?? 0));
+    const badgeUnlocks = BADGE_STYLES.filter((badge) => !isBadgeUnlocked(badge, previousStars, prev.totalBobas)
+      && isBadgeUnlocked(badge, nextStars, prev.totalBobas + bricksPopped)).map((badge) => badge.name);
     const nextLevelId = levelIds[levelIndex + 1];
     const unlockedLevelIds = new Set(prev.unlockedLevelIds);
     unlockedLevelIds.add(levelId);
     if (nextLevelId) unlockedLevelIds.add(nextLevelId);
     persist({
       ...prev,
+      energyLives,
+      energyUpdatedAt: energyLives >= MAX_ENERGY ? Date.now() : prev.energyUpdatedAt,
       unlockedUpTo: Math.max(prev.unlockedUpTo, levelIndex + 1),
       unlockedLevelIds: Array.from(unlockedLevelIds),
       levelStars: {
@@ -129,6 +136,17 @@ export function useSaveData(devUnlockAll: boolean, levelIds: string[]): UseSaveD
       },
       totalBobas: prev.totalBobas + bricksPopped,
     });
+    return { firstClear, energyRefund, badgeUnlocks };
+  }, [levelIds, persist]);
+
+  const selectBadge = useCallback((id: BadgeStyleId) => {
+    if (!hydratedRef.current) return false;
+    const prev = saveRef.current;
+    const stars = levelIds.reduce((total, levelId) => total + (prev.levelStarsById[levelId] ?? 0), 0);
+    const badge = getBadgeStyle(id, stars, prev.totalBobas);
+    if (badge.id !== id) return false;
+    persist({ ...prev, selectedBadgeId: id });
+    return true;
   }, [levelIds, persist]);
 
   const markWorldSeen = useCallback((worldIndex: number) => {
@@ -153,12 +171,20 @@ export function useSaveData(devUnlockAll: boolean, levelIds: string[]): UseSaveD
     persist({ ...saveRef.current, soundEnabled: sound, hapticsEnabled: haptics });
   }, [persist]);
 
-  const setAdsRemovedEntitlement = useCallback((active: boolean) => {
-    persist({ ...saveRef.current, adsRemoved: active });
+  const setAdsRemovedEntitlement = useCallback((active: boolean, expiresAt: number | null = null) => {
+    if (!hydratedRef.current) {
+      pendingEntitlementRef.current = { active, expiresAt };
+      return;
+    }
+    if (saveRef.current.adsRemoved !== active || saveRef.current.plusExpiresAt !== expiresAt) {
+      persist({ ...saveRef.current, adsRemoved: active, plusExpiresAt: expiresAt });
+    }
   }, [persist]);
 
   const spendEnergy = useCallback(() => {
+    if (!hydratedRef.current) return false;
     const resolved = resolveEnergy(saveRef.current);
+    if (hasUnlimitedEnergy(resolved)) return true;
     if (resolved.energyLives <= 0) {
       persist(resolved);
       return false;
@@ -171,21 +197,24 @@ export function useSaveData(devUnlockAll: boolean, levelIds: string[]): UseSaveD
     return true;
   }, [persist]);
 
-  const addEnergy = useCallback((amount = 1) => {
-    if (amount <= 0) return false;
+  const addEnergy = useCallback((amount = 1): EnergyGrant => {
     const resolved = resolveEnergy(saveRef.current);
-    if (resolved.energyLives >= MAX_ENERGY) {
-      persist(resolved);
-      return false;
-    }
-    const energyLives = Math.min(MAX_ENERGY, resolved.energyLives + amount);
+    const noGrant = { added: 0, energyBefore: resolved.energyLives, energyAfter: resolved.energyLives };
+    if (!hydratedRef.current || !Number.isFinite(amount) || amount < 1) return noGrant;
+    const energyLives = Math.min(MAX_ENERGY, resolved.energyLives + Math.floor(amount));
     persist({
       ...resolved,
       energyLives,
       energyUpdatedAt: energyLives >= MAX_ENERGY ? Date.now() : resolved.energyUpdatedAt,
     });
-    return true;
+    return { added: energyLives - resolved.energyLives, energyBefore: resolved.energyLives, energyAfter: energyLives };
   }, [persist]);
+
+  useEffect(() => {
+    if (save.adsRemoved && save.plusExpiresAt !== null && save.plusExpiresAt <= energyNow) {
+      setAdsRemovedEntitlement(false);
+    }
+  }, [energyNow, save.adsRemoved, save.plusExpiresAt, setAdsRemovedEntitlement]);
 
   // ── Resolved values ─────────────────────────────────────────────────────────
   const levelStars = useMemo(
@@ -211,5 +240,5 @@ export function useSaveData(devUnlockAll: boolean, levelIds: string[]): UseSaveD
     ? 0
     : Math.max(0, ENERGY_REFILL_MS - (energyNow - resolvedSave.energyUpdatedAt));
 
-  return { loading, unlockedUpTo, unlockedLevelIds: save.unlockedLevelIds, levelStars, levelHighScores, totalBobas: save.totalBobas, seenWorlds: save.seenWorlds, soundEnabled: save.soundEnabled, hapticsEnabled: save.hapticsEnabled, adsRemoved: save.adsRemoved, seenOnboarding: save.seenOnboarding, energy: resolvedSave.energyLives, maxEnergy: MAX_ENERGY, nextEnergyInMs, recordLevelComplete, markWorldSeen, markOnboardingSeen, updateSettings, setAdsRemovedEntitlement, isLevelUnlocked, spendEnergy, addEnergy };
+  return { loading, ready: hydratedRef.current, saveError, retrySave, unlockedUpTo, unlockedLevelIds: save.unlockedLevelIds, levelStars, levelHighScores, totalBobas: save.totalBobas, selectedBadgeId: save.selectedBadgeId, selectBadge, seenWorlds: save.seenWorlds, soundEnabled: save.soundEnabled, hapticsEnabled: save.hapticsEnabled, adsRemoved: hasUnlimitedEnergy(save, Math.max(energyNow, Date.now())), seenOnboarding: save.seenOnboarding, energy: resolvedSave.energyLives, maxEnergy: MAX_ENERGY, nextEnergyInMs, recordLevelComplete, markWorldSeen, markOnboardingSeen, updateSettings, setAdsRemovedEntitlement, isLevelUnlocked, spendEnergy, addEnergy };
 }

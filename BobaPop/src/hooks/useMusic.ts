@@ -19,10 +19,12 @@ const FADE_MS     = 600; // total crossfade duration
 let _players: Partial<Record<MusicTrack, AudioPlayer>> = {};
 let _currentTrack: MusicTrack | null = null;
 let _musicEnabled = true;
+let _backgrounded = false;
 let _fadeTimer: ReturnType<typeof setInterval> | null = null;
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 export async function preloadMusic(): Promise<void> {
+  if (Object.keys(_players).length > 0) return;
   await Promise.all(
     (Object.keys(MUSIC_ASSETS) as MusicTrack[]).map((track) => {
       const player = createAudioPlayer(MUSIC_ASSETS[track]);
@@ -38,11 +40,12 @@ export function setMusicEnabled(enabled: boolean): void {
   _musicEnabled = enabled;
   const player = _currentTrack ? _players[_currentTrack] : null;
   if (!player) return;
-  if (enabled) {
+  if (enabled && !_backgrounded) {
     player.volume = MUSIC_VOLUME;
     player.play();
   } else {
-    player.pause();
+    if (_fadeTimer !== null) { clearInterval(_fadeTimer); _fadeTimer = null; }
+    Object.values(_players).forEach((item) => item.pause());
   }
 }
 
@@ -55,6 +58,10 @@ export function playMusic(track: MusicTrack): void {
   const nextPlayer = _players[track];
   if (!nextPlayer) return;
 
+  // A canceled crossfade may have more than one audible player.
+  for (const [name, player] of Object.entries(_players)) {
+    if (name !== track && name !== prevTrack) { player.pause(); player.volume = 0; }
+  }
   _currentTrack = track;
 
   // Cancel any in-progress fade
@@ -63,7 +70,7 @@ export function playMusic(track: MusicTrack): void {
     _fadeTimer = null;
   }
 
-  if (!_musicEnabled) {
+  if (!_musicEnabled || _backgrounded) {
     // Just swap silently so state is correct for when music re-enables
     if (prevPlayer) prevPlayer.pause();
     nextPlayer.seekTo(0);
@@ -99,11 +106,13 @@ export function playMusic(track: MusicTrack): void {
 
 // ─── Pause / resume (for app backgrounding) ───────────────────────────────────
 export function pauseMusic(): void {
-  const player = _currentTrack ? _players[_currentTrack] : null;
-  player?.pause();
+  _backgrounded = true;
+  if (_fadeTimer !== null) { clearInterval(_fadeTimer); _fadeTimer = null; }
+  Object.values(_players).forEach((player) => player.pause());
 }
 
 export function resumeMusic(): void {
+  _backgrounded = false;
   if (!_musicEnabled) return;
   const player = _currentTrack ? _players[_currentTrack] : null;
   if (player) {

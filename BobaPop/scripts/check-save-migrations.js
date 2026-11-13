@@ -1,34 +1,9 @@
-const fs = require('fs');
-const path = require('path');
-const ts = require('typescript');
-const vm = require('vm');
-
-const corePath = path.join(__dirname, '..', 'src', 'hooks', 'saveDataCore.ts');
-const levelPath = path.join(__dirname, '..', 'src', 'game', 'levels.ts');
-
-function loadCoreModule() {
-  const source = fs.readFileSync(corePath, 'utf8');
-  const compiled = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2019,
-    },
-  }).outputText;
-
-  const sandbox = {
-    exports: {},
-    module: { exports: {} },
-    require,
-  };
-  sandbox.exports = sandbox.module.exports;
-  vm.runInNewContext(compiled, sandbox, { filename: corePath });
-  return sandbox.module.exports;
-}
+const { loader } = require('./test-helpers.cjs');
+const load = loader();
+const loadCoreModule = () => load('src/hooks/saveDataCore.ts');
 
 function readLevelIds() {
-  const source = fs.readFileSync(levelPath, 'utf8');
-  const matches = source.matchAll(/\{ id: '([^']+)', worldIndex: \d, levelInWorld: \d,[^\n]+ \}/g);
-  return Array.from(matches, (match) => match[1]);
+  return load('src/game/levels.ts').LEVELS.map((level) => level.id);
 }
 
 function assert(condition, message) {
@@ -58,7 +33,7 @@ const {
 } = loadCoreModule();
 
 const levelIds = readLevelIds();
-assertEqual(levelIds.length, 20, 'Level IDs should parse from levels.ts');
+assertEqual(levelIds.length, 40, 'Campaign should contain 40 level IDs');
 
 const fixedNow = 1_700_000_000_000;
 
@@ -68,7 +43,7 @@ const legacyV0 = migrateSaveData({
 }, levelIds, fixedNow);
 
 assertEqual(legacyV0.version, CURRENT_VERSION, 'v0 save should migrate to current version');
-assertArrayEqual(legacyV0.unlockedLevelIds, levelIds.slice(0, 3), 'v0 unlockedUpTo should map to level IDs');
+assertArrayEqual(legacyV0.unlockedLevelIds, levelIds.slice(0, 4), 'v0 completion stars should unlock the following level');
 assertEqual(legacyV0.levelStarsById[levelIds[0]], 3, 'v0 level 1 stars should map by ID');
 assertEqual(legacyV0.levelStarsById[levelIds[2]], 1, 'v0 level 3 stars should map by ID');
 assertEqual(legacyV0.energyLives, MAX_ENERGY, 'v0 save should receive full Energy');
@@ -104,7 +79,7 @@ const currentWithInvalidIds = migrateSaveData({
   levelHighScoresById: { [levelIds[4]]: 555, deleted_level: 999 },
 }, levelIds, fixedNow);
 
-assertArrayEqual(currentWithInvalidIds.unlockedLevelIds, [levelIds[4]], 'invalid unlocked IDs should be filtered');
+assertArrayEqual(currentWithInvalidIds.unlockedLevelIds, [levelIds[4], levelIds[5]], 'invalid unlocked IDs should be filtered and completed successors unlocked');
 assertEqual(currentWithInvalidIds.levelStarsById[levelIds[4]], 3, 'valid ID stars should survive filtering');
 assertEqual(currentWithInvalidIds.levelHighScoresById[levelIds[4]], 555, 'valid ID high scores should survive filtering');
 
@@ -142,3 +117,30 @@ assertEqual(capped.energyLives, MAX_ENERGY, 'Energy should cap at max');
 assertEqual(capped.energyUpdatedAt, fixedNow, 'Full Energy should reset timestamp to now');
 
 console.log('Save migration check passed.');
+
+const chapterOneIds = levelIds.slice(0, 20);
+const completedCampaign = migrateSaveData({
+  version: CURRENT_VERSION,
+  unlockedLevelIds: chapterOneIds,
+  levelStarsById: Object.fromEntries(chapterOneIds.map((id) => [id, 3])),
+  levelHighScoresById: { [chapterOneIds[19]]: 4321 },
+  totalBobas: 999,
+}, levelIds, fixedNow);
+assertArrayEqual(completedCampaign.unlockedLevelIds, levelIds.slice(0, 21), 'Existing finishers should unlock level 21 automatically');
+assertEqual(completedCampaign.levelHighScoresById[chapterOneIds[19]], 4321, 'Expansion must keep final boss high score');
+assertEqual(completedCampaign.totalBobas, 999, 'Expansion must preserve lifetime bobas');
+assertEqual(Object.values(completedCampaign.levelStarsById).reduce((total, stars) => total + stars, 0), 60, 'Expansion must preserve all earned stars');
+const unfinishedCampaign = migrateSaveData({
+  version: CURRENT_VERSION,
+  unlockedLevelIds: chapterOneIds,
+  levelStarsById: { [chapterOneIds[18]]: 3 },
+}, levelIds, fixedNow);
+assert(!unfinishedCampaign.unlockedLevelIds.includes(levelIds[20]), 'Level 21 must stay locked until the chapter 1 boss is completed');
+console.log('Campaign expansion migration checks passed.');
+
+const oldBadgeSave = migrateSaveData({ version: 9, unlockedLevelIds: chapterOneIds, levelStarsById: completedCampaign.levelStarsById, totalBobas: 999 }, levelIds, fixedNow);
+assertEqual(oldBadgeSave.selectedBadgeId, 'classic', 'Existing saves should receive the classic badge without losing progress');
+const selectedBadgeSave = migrateSaveData({ version: CURRENT_VERSION, selectedBadgeId: 'pearl', levelStarsById: completedCampaign.levelStarsById }, levelIds, fixedNow);
+assertEqual(selectedBadgeSave.selectedBadgeId, 'pearl', 'Current saves should retain selected badge styles');
+assertEqual(migrateSaveData({ version: CURRENT_VERSION, selectedBadgeId: 'unknown' }, levelIds, fixedNow).selectedBadgeId, 'classic', 'Unknown badge styles should fall back safely');
+console.log('Badge save migration checks passed.');

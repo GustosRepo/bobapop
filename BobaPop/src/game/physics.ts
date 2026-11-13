@@ -49,6 +49,30 @@ function clampVelocity(vx: number, vy: number) {
   return { vx, vy };
 }
 
+// Resolve the contact face from the previous position, then separate the ball.
+// Separation prevents another damage event while the ball is still inside a collider.
+function reflectContact(x: number, y: number, vx: number, vy: number,
+  previousX: number, previousY: number, rect: { x: number; y: number; w: number; h: number }) {
+  const left = rect.x - BALL_RADIUS;
+  const right = rect.x + rect.w + BALL_RADIUS;
+  const top = rect.y - BALL_RADIUS;
+  const bottom = rect.y + rect.h + BALL_RADIUS;
+  let side: 'left' | 'right' | 'top' | 'bottom';
+  if (previousY >= bottom) side = 'bottom';
+  else if (previousY <= top) side = 'top';
+  else if (previousX <= left) side = 'left';
+  else if (previousX >= right) side = 'right';
+  else {
+    const distances = { left: Math.abs(x - left), right: Math.abs(right - x), top: Math.abs(y - top), bottom: Math.abs(bottom - y) };
+    side = (Object.keys(distances) as Array<keyof typeof distances>)
+      .reduce((nearest, candidate) => distances[candidate] < distances[nearest] ? candidate : nearest, 'top');
+  }
+  if (side === 'left') return { x: left - 0.01, y, vx: -Math.abs(vx), vy };
+  if (side === 'right') return { x: right + 0.01, y, vx: Math.abs(vx), vy };
+  if (side === 'top') return { x, y: top - 0.01, vx, vy: -Math.abs(vy) };
+  return { x, y: bottom + 0.01, vx, vy: Math.abs(vy) };
+}
+
 // ─── Particle Factory ─────────────────────────────────────────────────────────
 
 export function spawnParticles(
@@ -57,8 +81,8 @@ export function spawnParticles(
   colors: string[],
   count = PARTICLE_COUNT,
   kind: Particle['kind'] = 'boba',
+  now = Date.now(),
 ): Particle[] {
-  const now = Date.now();
   return Array.from({ length: count }, () => {
     const angle = Math.random() * Math.PI * 2;
     const speed = 1.5 + Math.random() * 3;
@@ -79,14 +103,14 @@ export function spawnParticles(
 
 // ─── Physics Step ─────────────────────────────────────────────────────────────
 
-export function physicsStep(
+function physicsSubstep(
   state: GameState,
   deltaMs: number,
   particleColors: string[],
 ): GameState {
   if (state.phase !== 'playing') return state;
 
-  const now = Date.now();
+  const now = (state.elapsedMs ?? 0) + deltaMs;
   const slowActive = state.activePowerUps.some(
     (p) => p.type === 'slow_motion' && p.expiresAt > now,
   );
@@ -94,7 +118,7 @@ export function physicsStep(
   const dt = (deltaMs / (1000 / 60)) * speedMul;
 
   // expire power-ups
-  const activePowerUps = state.activePowerUps.filter((p) => p.expiresAt > now);
+  const activePowerUps = state.activePowerUps.filter((p) => p.expiresAt > now).map((p) => ({ ...p }));
   const wideActive = activePowerUps.some((p) => p.type === 'wide_paddle');
   const stickyActive = activePowerUps.some((p) => p.type === 'sticky_paddle');
   const paddleWidth = wideActive ? state.paddle.baseWidth * 1.6 : state.paddle.baseWidth;
@@ -110,7 +134,7 @@ export function physicsStep(
   let newParticles = [...state.particles];
   let scoreGain = 0;
   const newBallsToAdd: Ball[] = [];
-  let livesLost = 0;
+  let stickyCount = state.stickyCount;
   let bricksPoppedThisFrame = 0;
   // Copy boss so we can mutate it safely during ball loop
   let boss: BossBrick | undefined = state.boss ? { ...state.boss } : undefined;
@@ -122,7 +146,7 @@ export function physicsStep(
     .map((p) => {
       const age = now - p.born;
       const alpha = Math.max(0, 1 - age / PARTICLE_LIFETIME);
-      return { ...p, x: p.x + p.vx, y: p.y + p.vy, vy: p.vy + 0.08, alpha };
+      return { ...p, x: p.x + p.vx * deltaMs / (1000 / 60), y: p.y + p.vy * deltaMs / (1000 / 60), vy: p.vy + 0.08 * deltaMs / (1000 / 60), alpha };
     })
     .filter((p) => p.alpha > 0);
 
@@ -131,7 +155,7 @@ export function physicsStep(
     if (!ball.active) return ball;
     if (ball.sticky) {
       // follow paddle
-      const px = paddle.x + (ball.stickyOffsetX ?? paddle.width / 2);
+      const px = paddle.x + Math.max(BALL_RADIUS, Math.min(paddle.width - BALL_RADIUS, ball.stickyOffsetX ?? paddle.width / 2));
       return { ...ball, x: px, y: GAME_HEIGHT - PADDLE_Y_OFFSET - BALL_RADIUS };
     }
 
@@ -158,11 +182,12 @@ export function physicsStep(
     if (
       vy > 0 &&
       y + BALL_RADIUS >= pr.y &&
-      y + BALL_RADIUS <= pr.y + pr.h + 4 &&
+      ball.y + BALL_RADIUS <= pr.y + 0.01 &&
       x >= pr.x - BALL_RADIUS &&
       x <= pr.x + pr.w + BALL_RADIUS
     ) {
-      if (stickyActive && state.stickyCount > 0) {
+      if (stickyActive && stickyCount > 0) {
+        stickyCount -= 1;
         return {
           ...ball,
           x,
@@ -175,7 +200,7 @@ export function physicsStep(
       }
       hapticSet.add('paddle_hit');
       // angle based on where ball hits paddle (±60° max to prevent shallow traps)
-      const hitPos = (x - pr.x) / pr.w; // 0-1
+      const hitPos = Math.max(0, Math.min(1, (x - pr.x) / pr.w)); // 0-1
       const angle = (hitPos - 0.5) * (Math.PI * 2) / 3; // -60° to +60°
       const speed = Math.sqrt(vx * vx + vy * vy);
       vx = Math.sin(angle) * speed;
@@ -211,28 +236,24 @@ export function physicsStep(
           bricksPoppedThisFrame++;
           hapticSet.add('brick_destroy');
           newParticles.push(
-            ...spawnParticles(brickCenterX, brickCenterY, particleColors, PARTICLE_COUNT, 'splash'),
+            ...spawnParticles(brickCenterX, brickCenterY, particleColors, PARTICLE_COUNT, 'splash', now),
           );
 
           // drop power-up
           if (brick.powerUp) {
-            applyPowerUp(brick.powerUp, x, y, now, activePowerUps, newBallsToAdd, ball, vx, vy);
+            applyPowerUp(brick.powerUp, x, y, now, activePowerUps, newBallsToAdd, vx, vy);
+            if (brick.powerUp === 'sticky_paddle') stickyCount = 3;
             telemetryEvents.push({ type: 'power_up_collected', powerUp: brick.powerUp });
           }
         } else {
           newBricks[i] = { ...brick, hp: newHp };
           hapticSet.add('brick_hit');
           newParticles.push(
-            ...spawnParticles(brickCenterX, brickCenterY, particleColors, 4, 'boba'),
+            ...spawnParticles(brickCenterX, brickCenterY, particleColors, 4, 'boba', now),
           );
         }
 
-        // reflect based on collision side
-        if (Math.abs(dx) > Math.abs(dy)) {
-          vx = dx > 0 ? Math.abs(vx) : -Math.abs(vx);
-        } else {
-          vy = dy > 0 ? Math.abs(vy) : -Math.abs(vy);
-        }
+        ({ x, y, vx, vy } = reflectContact(x, y, vx, vy, ball.x, ball.y, { x: bx, y: by, w: bw, h: bh }));
         break;
       }
     }
@@ -247,7 +268,7 @@ export function physicsStep(
         boss.hp -= 1;
         hapticSet.add('boss_hit');
         newParticles.push(
-          ...spawnParticles(bx + bw / 2, by + bh / 2, particleColors, 6, 'burst'),
+          ...spawnParticles(bx + bw / 2, by + bh / 2, particleColors, 6, 'burst', now),
         );
         if (boss.hp <= 0) {
           boss.defeated = true;
@@ -255,19 +276,14 @@ export function physicsStep(
           scoreGain += boss.maxHp * 50;
           // Mega burst on defeat
           newParticles.push(
-            ...spawnParticles(bx + bw / 2, by + bh / 2, particleColors, 30, 'burst'),
+            ...spawnParticles(bx + bw / 2, by + bh / 2, particleColors, 30, 'burst', now),
           );
         }
-        if (Math.abs(dx) > Math.abs(dy)) {
-          vx = dx > 0 ? Math.abs(vx) : -Math.abs(vx);
-        } else {
-          vy = dy > 0 ? Math.abs(vy) : -Math.abs(vy);
-        }
+        ({ x, y, vx, vy } = reflectContact(x, y, vx, vy, ball.x, ball.y, { x: bx, y: by, w: bw, h: bh }));
       }
     }
     // ── out of bounds (bottom) ───────────────────────────────────────────
     if (y - BALL_RADIUS > GAME_HEIGHT) {
-      livesLost++;
       return { ...ball, active: false };
     }
 
@@ -305,13 +321,14 @@ export function physicsStep(
   let lives = state.lives;
   let phase: GameState['phase'] = state.phase;
 
-  if (activeBalls.length === 0 && state.phase === 'playing') {
+  const cleared = !newBricks.some((brick) => brick.active) && (!boss || boss.defeated);
+  if (activeBalls.length === 0 && !cleared) {
     lives -= 1;
     if (lives <= 0) {
       phase = 'lost';
     } else {
       // respawn a single sticky ball on paddle
-      const respawn = makeStickyBall(paddle);
+      const respawn = makeStickyBall(paddle, state.ballSpeed);
       activeBalls.push(respawn);
     }
   }
@@ -342,10 +359,8 @@ export function physicsStep(
     hapticEvents: hapticSet.size > 0 ? [...hapticSet] : [],
     telemetryEvents: telemetryEvents.length > 0 ? telemetryEvents : [],
     bricksPopped: (state.bricksPopped ?? 0) + bricksPoppedThisFrame,
-    stickyCount:
-      stickyActive
-        ? Math.max(0, state.stickyCount - (livesLost > 0 ? 0 : 0))
-        : state.stickyCount,
+    stickyCount,
+    elapsedMs: now,
   };
 }
 
@@ -353,12 +368,11 @@ export function physicsStep(
 
 function applyPowerUp(
   type: PowerUpType,
-  _bx: number,
-  _by: number,
+  bx: number,
+  by: number,
   now: number,
   activePowerUps: ActivePowerUp[],
   newBalls: Ball[],
-  sourceBall: Ball,
   vx: number,
   vy: number,
 ) {
@@ -368,8 +382,8 @@ function applyPowerUp(
       pushOrRefresh(activePowerUps, 'multi_ball', now + 1500);
       newBalls.push({
         id: uid(),
-        x: sourceBall.x,
-        y: sourceBall.y,
+        x: bx,
+        y: by,
         vx: speed * Math.sin(Math.PI / 6),
         vy: -speed * Math.cos(Math.PI / 6),
         active: true,
@@ -378,8 +392,8 @@ function applyPowerUp(
       });
       newBalls.push({
         id: uid(),
-        x: sourceBall.x,
-        y: sourceBall.y,
+        x: bx,
+        y: by,
         vx: -speed * Math.sin(Math.PI / 6),
         vy: -speed * Math.cos(Math.PI / 6),
         active: true,
@@ -416,8 +430,8 @@ export function makeInitialBall(paddleX: number, paddleWidth: number, speed = 7)
     id: uid(),
     x: paddleX + paddleWidth / 2,
     y: GAME_HEIGHT - PADDLE_Y_OFFSET - BALL_RADIUS,
-    vx: (Math.random() - 0.5) * 2,
-    vy: -speed,
+    vx: Math.random() > 0.5 ? 1 : -1,
+    vy: -Math.sqrt(Math.max(0, speed * speed - 1)),
     active: true,
     sticky: true,
     variant: 'default',
@@ -425,16 +439,31 @@ export function makeInitialBall(paddleX: number, paddleWidth: number, speed = 7)
   };
 }
 
-export function makeStickyBall(paddle: { x: number; width: number }): Ball {
+export function makeStickyBall(paddle: { x: number; width: number }, speed = 7): Ball {
   return {
     id: uid(),
     x: paddle.x + paddle.width / 2,
     y: GAME_HEIGHT - PADDLE_Y_OFFSET - BALL_RADIUS,
-    vx: (Math.random() > 0.5 ? 1 : -1) * 4,
-    vy: -7,
+    vx: (Math.random() > 0.5 ? 1 : -1) * speed * 0.4,
+    vy: -speed * Math.sqrt(1 - 0.4 ** 2),
     active: true,
     sticky: true,
     variant: 'default',
     stickyOffsetX: paddle.width / 2,
   };
+}
+
+export function physicsStep(state: GameState, deltaMs: number, particleColors: string[]): GameState {
+  if (state.phase !== 'playing' || !Number.isFinite(deltaMs) || deltaMs <= 0) return state;
+  const duration = Math.min(deltaMs, 64);
+  const steps = Math.ceil(duration / 8);
+  const haptics = new Set<HapticEvent>();
+  const telemetry: NonNullable<GameState['telemetryEvents']> = [];
+  let next = state;
+  for (let i = 0; i < steps && next.phase === 'playing'; i++) {
+    next = physicsSubstep(next, duration / steps, particleColors);
+    next.hapticEvents?.forEach((event) => haptics.add(event));
+    telemetry.push(...(next.telemetryEvents ?? []));
+  }
+  return { ...next, hapticEvents: [...haptics], telemetryEvents: telemetry };
 }

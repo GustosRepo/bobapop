@@ -1,9 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createAnalyticsQueue } from './analyticsQueue';
 import { PowerUpType } from '../game/types';
 
 type AnalyticsParams = Record<string, string | number | boolean | null | undefined>;
 
-interface AnalyticsEvent {
+export interface AnalyticsEvent {
   id: string;
   name: string;
   params: AnalyticsParams;
@@ -13,8 +14,6 @@ interface AnalyticsEvent {
 
 type AnalyticsTransport = (event: AnalyticsEvent) => Promise<void> | void;
 
-const QUEUE_KEY = '@bobapop_analytics_queue_v1';
-const MAX_QUEUE_SIZE = 100;
 const sessionId = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
 const sessionCounters = {
@@ -25,48 +24,14 @@ const sessionCounters = {
 };
 
 let transport: AnalyticsTransport | null = null;
-let flushing = false;
+const queue = createAnalyticsQueue<AnalyticsEvent>(AsyncStorage);
 
 export function configureAnalytics(nextTransport: AnalyticsTransport | null) {
   transport = nextTransport;
 }
 
-async function readQueue(): Promise<AnalyticsEvent[]> {
-  try {
-    const raw = await AsyncStorage.getItem(QUEUE_KEY);
-    return raw ? JSON.parse(raw) as AnalyticsEvent[] : [];
-  } catch {
-    return [];
-  }
-}
-
-async function writeQueue(events: AnalyticsEvent[]) {
-  await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(events.slice(-MAX_QUEUE_SIZE)));
-}
-
-async function enqueue(event: AnalyticsEvent) {
-  const queue = await readQueue();
-  queue.push(event);
-  await writeQueue(queue);
-}
-
 export async function flushAnalyticsQueue() {
-  if (!transport || flushing) return;
-  flushing = true;
-  try {
-    const queue = await readQueue();
-    const remaining: AnalyticsEvent[] = [];
-    for (const event of queue) {
-      try {
-        await transport(event);
-      } catch {
-        remaining.push(event);
-      }
-    }
-    await writeQueue(remaining);
-  } finally {
-    flushing = false;
-  }
+  if (transport) await queue.flush(transport);
 }
 
 export function trackGameEvent(eventName: string, params: AnalyticsParams = {}) {
@@ -82,7 +47,8 @@ export function trackGameEvent(eventName: string, params: AnalyticsParams = {}) 
     console.log('[Analytics]', event.name, event.params);
   }
 
-  enqueue(event)
+  if (!transport) return;
+  queue.enqueue(event)
     .then(flushAnalyticsQueue)
     .catch(() => {});
 }

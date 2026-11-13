@@ -1,4 +1,5 @@
 import { Brick, PowerUpType } from '../game/types';
+import { CHAPTER_TWO_LEVELS } from './chapterTwo';
 import {
   BOSS_HEIGHT,
   BRICK_PADDING,
@@ -59,8 +60,10 @@ function deterministicRoll(levelIndex: number, row: number, col: number, salt: n
 
 export interface LevelDef {
   id: string;
+  name?: string;
+  chapter?: number; // omitted for the original chapter
   worldIndex: number; // 0-3
-  levelInWorld: number; // 1-5
+  levelInWorld: number; // 1-10; five levels per chapter
   grid: Grid;
   ballSpeed: number;
   paddleWidth: number;
@@ -257,6 +260,8 @@ export const LEVELS: LevelDef[] = [
   { id: 'thai_tea_3', worldIndex: 3, levelInWorld: 3, grid: tt3, ballSpeed: 14,   paddleWidth: 60, powerUpChance: 0.12, isBoss: false, bossHp: 0,  bossSpeed: 0   },
   { id: 'thai_tea_4', worldIndex: 3, levelInWorld: 4, grid: tt4, ballSpeed: 14,   paddleWidth: 58, powerUpChance: 0.11, isBoss: false, bossHp: 0,  bossSpeed: 0   },
   { id: 'thai_tea_boss', worldIndex: 3, levelInWorld: 5, grid: tt5, ballSpeed: 14,   paddleWidth: 56, powerUpChance: 0.10, isBoss: true,  bossHp: 24, bossSpeed: 3.0 },
+  // Append new content so existing indices, IDs, and seeded power-ups stay stable.
+  ...CHAPTER_TWO_LEVELS,
 ];
 
 let _brickIdCounter = 0;

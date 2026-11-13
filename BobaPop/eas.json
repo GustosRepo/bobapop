@@ -14,7 +14,12 @@
       "environment": "production",
       "ios": {
         "distribution": "store"
-      }
+      },
+      "autoIncrement": true
+    },
+    "preview": {
+      "distribution": "internal",
+      "environment": "preview"
     }
   },
   "submit": {

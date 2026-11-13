@@ -1,0 +1,27 @@
+name: BobaPop checks
+on:
+  push:
+    paths: ['BobaPop/**', '.github/workflows/bobapop.yml']
+  pull_request:
+    paths: ['BobaPop/**', '.github/workflows/bobapop.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: BobaPop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.20.0'
+          cache: npm
+          cache-dependency-path: BobaPop/package-lock.json
+      - run: npm ci
+      - run: npm run preflight
+      - run: npx expo-doctor
+      - run: npx expo export --platform all --output-dir dist
+        env:
+          CI: '1'

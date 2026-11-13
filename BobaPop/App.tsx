@@ -1,5 +1,8 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { View, StyleSheet, Dimensions, StatusBar, Text, Image, Animated, Alert } from 'react-native';
+import { View, StyleSheet, StatusBar, Text, Image, Animated, Alert, TouchableOpacity } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useReducedMotion } from './src/hooks/useReducedMotion';
+import { AppErrorBoundary } from './src/components/AppErrorBoundary';
 import { GameScreen } from './src/screens/GameScreen';
 import { LevelSelectScreen } from './src/screens/LevelSelectScreen';
 import { LevelCompleteScreen } from './src/screens/LevelCompleteScreen';
@@ -17,6 +20,7 @@ import { preloadMusic, playMusic, setMusicEnabled } from './src/hooks/useMusic';
 import { AppState, AppStateStatus } from 'react-native';
 import { pauseMusic, resumeMusic } from './src/hooks/useMusic';
 import { useRewardedAd } from './src/hooks/useRewardedAd';
+import { CompletionReward, ENERGY_AD_REWARD } from './src/monetization/economy';
 import { getContinueOffer } from './src/monetization/continueSystem';
 import {
   trackContinueAccepted,
@@ -34,7 +38,6 @@ import { PlusPlanId } from './src/monetization/plus';
 import { usePlusPurchases } from './src/hooks/usePlusPurchases';
 import { GameState } from './src/game/types';
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('screen');
 
 // ─── DEV ─────────────────────────────────────────────────────────────────────
 const DEV_UNLOCK_ALL = false; // set to false before shipping
@@ -45,14 +48,13 @@ const START_LOCK_MS = 650;
 type Screen =
   | { name: 'select' }
   | { name: 'game'; levelIndex: number; runId: number; initialLives?: number; resumeState?: GameState }
-  | { name: 'complete'; score: number; stars: number; levelIndex: number }
+  | ({ name: 'complete'; score: number; stars: number; levelIndex: number } & CompletionReward)
   | {
       name: 'over';
       score: number;
       levelIndex: number;
       runId: number;
       failedState: GameState;
-      continueAvailableAt: number;
     };
 
 /** Stars based on lives remaining — standard for casual arcade games */
@@ -63,9 +65,16 @@ function livesToStars(lives: number): number {
 }
 
 export default function App() {
+  return <SafeAreaProvider><AppErrorBoundary><BobaPop /></AppErrorBoundary></SafeAreaProvider>;
+}
+
+function BobaPop() {
+  const reducedMotion = useReducedMotion();
+  const insets = useSafeAreaInsets();
   const levelIds = useMemo(() => LEVELS.map((level) => level.id), []);
   const [screen, setScreen] = useState<Screen>({ name: 'select' });
   const nextRunIdRef = useRef(1);
+  const runEndingRef = useRef(false);
   const startLockedRef = useRef(false);
   const continuePendingRef = useRef(false);
   const energyAdPendingRef = useRef(false);
@@ -84,9 +93,13 @@ export default function App() {
 
   useEffect(() => {
     const endpoint = process.env.EXPO_PUBLIC_ANALYTICS_ENDPOINT;
-    if (!endpoint) return;
+    if (!endpoint || (!__DEV__ && !endpoint.startsWith('https://'))) return;
     configureAnalytics(async (event) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
+      try {
       const response = await fetch(endpoint, {
+        signal: controller.signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(event),
@@ -94,6 +107,7 @@ export default function App() {
       if (!response.ok) {
         throw new Error(`Analytics request failed: ${response.status}`);
       }
+      } finally { clearTimeout(timer); }
     });
     flushAnalyticsQueue().catch(() => {});
   }, []);
@@ -101,35 +115,38 @@ export default function App() {
   // ── App background / foreground — pause music when backgrounded ────────────
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
-      if (state === 'active') resumeMusic();
+      if (state === 'active') { resumeMusic(); flushAnalyticsQueue().catch(() => {}); }
       else pauseMusic();
     });
     return () => sub.remove();
   }, []);
 
   const {
-    loading, unlockedUpTo, levelStars, levelHighScores, totalBobas,
+    loading, ready: saveReady, saveError, retrySave, unlockedUpTo, levelStars, levelHighScores, totalBobas, selectedBadgeId, selectBadge,
     seenWorlds, soundEnabled, hapticsEnabled, adsRemoved, seenOnboarding,
     energy, maxEnergy, nextEnergyInMs,
     recordLevelComplete, markWorldSeen, markOnboardingSeen, updateSettings, setAdsRemovedEntitlement, isLevelUnlocked, spendEnergy, addEnergy,
   } = useSaveData(DEV_UNLOCK_ALL, levelIds);
 
   useEffect(() => {
-    if (!loading && !seenOnboarding.app_intro) {
+    if (saveReady && !loading && !seenOnboarding.app_intro) {
       setOnboardingVisible(true);
     }
-  }, [loading, seenOnboarding.app_intro]);
+  }, [loading, saveReady, seenOnboarding.app_intro]);
 
-  const { isLoaded: rewardedAdLoaded, status: rewardedAdStatus, showAd } = useRewardedAd();
-  const setPlusEntitlement = useCallback((active: boolean) => {
-    setAdsRemovedEntitlement(active);
+  const { isLoaded: rewardedAdLoaded, status: rewardedAdStatus, showAd, privacyOptionsRequired, openPrivacyOptions } = useRewardedAd(saveReady && !loading && seenOnboarding.app_intro && !adsRemoved);
+  const setPlusEntitlement = useCallback((active: boolean, expiresAt?: number | null) => {
+    setAdsRemovedEntitlement(active, expiresAt);
   }, [setAdsRemovedEntitlement]);
   const {
     busyPlanId,
+    restoring,
+    connected: storeConnected,
     storeMessage,
     storePlans,
     purchasePlan,
     restorePurchases,
+    reloadProducts,
   } = usePlusPurchases(setPlusEntitlement);
 
   useEffect(() => {
@@ -163,11 +180,12 @@ export default function App() {
   // ── Screen fade transition ──────────────────────────────────────────────────────
   const screenOpacity = useRef(new Animated.Value(1)).current;
   const navigateTo = useCallback((newScreen: Screen) => {
+    if (reducedMotion) { setScreen(newScreen); return; }
     Animated.timing(screenOpacity, { toValue: 0, duration: 180, useNativeDriver: true }).start(() => {
       setScreen(newScreen);
       Animated.timing(screenOpacity, { toValue: 1, duration: 220, useNativeDriver: true }).start();
     });
-  }, [screenOpacity]);
+  }, [screenOpacity, reducedMotion]);
 
   const handleWatchEnergyAd = useCallback(() => {
     if (energy >= maxEnergy) {
@@ -176,10 +194,7 @@ export default function App() {
     }
     if (energyAdPendingRef.current) return;
 
-    if (adsRemoved) {
-      Alert.alert('Energy', 'Energy refills over time.');
-      return;
-    }
+    if (adsRemoved) return;
 
     if (!rewardedAdLoaded) {
       const message = rewardedAdStatus === 'loading'
@@ -193,14 +208,10 @@ export default function App() {
     energyAdPendingRef.current = true;
     showAd((result) => {
       energyAdPendingRef.current = false;
-      let energyAfter = energyBefore;
-      if (result === 'watched') {
-        const granted = addEnergy(1);
-        energyAfter = granted ? Math.min(maxEnergy, energyBefore + 1) : energyBefore;
-      }
-      trackEnergyAdResult(result, energyBefore, energyAfter);
-      if (result !== 'watched') return;
-      Alert.alert('Energy added', `Energy ${energyAfter}/${maxEnergy}`);
+      if (result !== 'watched') { trackEnergyAdResult(result, energyBefore, energyBefore); return; }
+      const grant = addEnergy(ENERGY_AD_REWARD);
+      trackEnergyAdResult(result, grant.energyBefore, grant.energyAfter);
+      Alert.alert(grant.added > 0 ? `+${grant.added} Energy` : 'Energy full', `Energy ${grant.energyAfter}/${maxEnergy}`);
     });
   }, [addEnergy, adsRemoved, energy, maxEnergy, rewardedAdLoaded, rewardedAdStatus, showAd]);
 
@@ -227,15 +238,16 @@ export default function App() {
         const buttons = !adsRemoved && rewardedAdLoaded
           ? [
               { text: 'Not now', style: 'cancel' as const },
-              { text: 'Watch Ad', onPress: () => handleWatchEnergyAd() },
+              { text: `Watch Ad · +${ENERGY_AD_REWARD} Energy`, onPress: () => handleWatchEnergyAd() },
             ]
           : [{ text: 'OK' }];
         Alert.alert('Out of energy', message, buttons);
         return false;
       }
       nextRunIdRef.current += 1;
-      setRunContinues((prev) => ({ ...prev, [resolvedRunId]: 0 }));
+      setRunContinues({ [resolvedRunId]: 0 });
     }
+    runEndingRef.current = false;
     trackLevelStart(levelIndex, resolvedRunId);
     navigateTo({ name: 'game', levelIndex, runId: resolvedRunId, initialLives, resumeState });
     releaseStartLock();
@@ -268,22 +280,22 @@ export default function App() {
 
   const handleLevelComplete = useCallback(
     (score: number, bricksPopped: number, lives: number) => {
-      if (screen.name !== 'game') return;
+      if (screen.name !== 'game' || runEndingRef.current) return;
+      runEndingRef.current = true;
       const idx = screen.levelIndex;
       const earned = livesToStars(lives);
       trackLevelComplete(idx, score, earned, bricksPopped, lives);
-      recordLevelComplete(idx, earned, score, bricksPopped);
-      navigateTo({ name: 'complete', score, stars: earned, levelIndex: idx });
+      const reward = recordLevelComplete(idx, earned, score, bricksPopped);
+      navigateTo({ name: 'complete', score, stars: earned, levelIndex: idx, ...reward });
     },
     [screen, recordLevelComplete, navigateTo],
   );
 
   const handleGameOver = useCallback(
     (score: number, failedState: GameState) => {
-      if (screen.name !== 'game') return;
+      if (screen.name !== 'game' || runEndingRef.current) return;
+      runEndingRef.current = true;
       const continuesUsed = runContinues[screen.runId] ?? 0;
-      const offer = getContinueOffer(screen.levelIndex, continuesUsed, adsRemoved);
-      const continueAvailableAt = Date.now() + offer.delaySeconds * 1000;
       trackLevelFail(screen.levelIndex, score, continuesUsed);
       navigateTo({
         name: 'over',
@@ -291,7 +303,6 @@ export default function App() {
         levelIndex: screen.levelIndex,
         runId: screen.runId,
         failedState,
-        continueAvailableAt,
       });
     },
     [adsRemoved, screen, navigateTo, runContinues],
@@ -303,7 +314,6 @@ export default function App() {
     const continuesUsed = runContinues[runId] ?? 0;
     const offer = getContinueOffer(levelIndex, continuesUsed, adsRemoved);
     if (!offer.canShow) return;
-    if (!adsRemoved && Date.now() < screen.continueAvailableAt) return;
     if (continuePendingRef.current) return;
 
     continuePendingRef.current = true;
@@ -344,21 +354,21 @@ export default function App() {
   }, [purchasePlan]);
 
   const handleRestorePurchases = useCallback(() => {
-    if (adsRemoved) {
-      Alert.alert('Restored', 'BobaPop Plus is already active.');
-      return;
-    }
     restorePurchases();
-  }, [adsRemoved, restorePurchases]);
+  }, [restorePurchases]);
 
   // ── Loading splash ──────────────────────────────────────────────────────
-  if (loading) {
+  if (loading || !saveReady) {
     return (
       <View style={[styles.fullScreen, styles.splash]}>
         <StatusBar hidden />
         <Image source={IMAGES.mascotHappy} style={styles.splashMascot} resizeMode="contain" />
         <Text style={styles.splashTitle}>BobaPop</Text>
         <Text style={styles.splashSub}>by CODEWERX LLC</Text>
+        {saveError && <View style={{ padding: 24 }} accessibilityLiveRegion="assertive">
+          <Text style={styles.saveNoticeText}>{saveError}</Text>
+          <TouchableOpacity accessibilityRole="button" onPress={retrySave} style={styles.retrySave}><Text style={styles.saveNoticeText}>Retry loading progress</Text></TouchableOpacity>
+        </View>}
       </View>
     );
   }
@@ -369,13 +379,15 @@ export default function App() {
   if (screen.name === 'select') {
     screenContent = (
       <>
-        <StatusBar hidden translucent backgroundColor="transparent" />
+        <StatusBar hidden />
         <LevelSelectScreen
           unlockedUpTo={unlockedUpTo}
           isLevelUnlocked={isLevelUnlocked}
           levelStars={levelStars}
           levelHighScores={levelHighScores}
           totalBobas={totalBobas}
+          selectedBadgeId={selectedBadgeId}
+          onSelectBadge={selectBadge}
           soundEnabled={soundEnabled}
           hapticsEnabled={hapticsEnabled}
           plusActive={adsRemoved}
@@ -387,6 +399,8 @@ export default function App() {
           onSelectLevel={handleSelectLevel}
           onWatchEnergyAd={handleWatchEnergyAd}
           onUpdateSettings={updateSettings}
+          privacyOptionsRequired={privacyOptionsRequired}
+          onOpenPrivacy={openPrivacyOptions}
           onOpenPlus={() => setPlusPaywallVisible(true)}
         />
       </>
@@ -394,12 +408,14 @@ export default function App() {
   } else if (screen.name === 'game') {
     screenContent = (
       <>
-        <StatusBar hidden translucent backgroundColor="transparent" />
+        <StatusBar hidden />
         <GameScreen
+          key={screen.runId}
           levelIndex={screen.levelIndex}
           initialLives={screen.initialLives}
           resumeState={screen.resumeState}
           energy={energy}
+          unlimitedEnergy={adsRemoved}
           maxEnergy={maxEnergy}
           nextEnergyInMs={nextEnergyInMs}
           seenOnboarding={seenOnboarding}
@@ -418,14 +434,20 @@ export default function App() {
     const worldTheme = WORLDS[LEVELS[levelIndex]?.worldIndex ?? 0];
     screenContent = (
       <>
-        <StatusBar hidden translucent backgroundColor="transparent" />
+        <StatusBar hidden />
         <LevelCompleteScreen
           score={score}
+          firstClear={screen.firstClear}
+          badgeUnlocks={screen.badgeUnlocks}
+          energyRefund={screen.energyRefund}
+          unlimitedEnergy={adsRemoved}
           stars={stars}
           levelNumber={levelIndex + 1}
           theme={worldTheme}
           isLast={isLast}
           isWorldBoss={isWorldBoss}
+          chapter={LEVELS[levelIndex].chapter ?? 1}
+          isChapterComplete={!isLast && (LEVELS[levelIndex + 1].chapter ?? 1) !== (LEVELS[levelIndex].chapter ?? 1)}
           onNext={() => handleSelectLevel(levelIndex + 1)}
           onReplay={() => startLevel(levelIndex)}
           onMenu={() => navigateTo({ name: 'select' })}
@@ -439,7 +461,7 @@ export default function App() {
     const continueOffer = getContinueOffer(levelIndex, continuesUsed, adsRemoved);
     screenContent = (
       <>
-        <StatusBar hidden translucent backgroundColor="transparent" />
+        <StatusBar hidden />
         <GameOverScreen
           score={score}
           levelNumber={levelIndex + 1}
@@ -467,6 +489,15 @@ export default function App() {
         {screenContent}
       </Animated.View>
 
+      {saveError && (
+        <View style={[styles.saveNotice, { top: insets.top + 8 }]} accessibilityLiveRegion="assertive">
+          <Text style={styles.saveNoticeText}>{saveError}</Text>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retry saving or loading progress" onPress={retrySave} style={styles.retrySave}>
+            <Text style={styles.saveNoticeText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* World intro modal overlays via RN Modal portal — renders above everything */}
       {worldIntro !== null && (
         <WorldIntroModal
@@ -481,10 +512,13 @@ export default function App() {
         plusActive={adsRemoved}
         plans={storePlans}
         busyPlanId={busyPlanId}
+        restoring={restoring}
+        storeConnected={storeConnected}
         storeMessage={storeMessage}
         onClose={() => setPlusPaywallVisible(false)}
         onSelectPlan={handleSelectPlusPlan}
         onRestore={handleRestorePurchases}
+        onReloadProducts={reloadProducts}
       />
 
       <OnboardingModal
@@ -500,10 +534,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     left: 0,
-    width: SCREEN_W,
-    height: SCREEN_H,
+    right: 0,
+    bottom: 0,
     backgroundColor: '#2A0F05',
   },
+  saveNotice: { position: 'absolute', left: 12, right: 12, backgroundColor: '#54280C', padding: 12, borderRadius: 12, zIndex: 50 },
+  saveNoticeText: { color: '#FFF8EF', fontSize: 15 },
+  retrySave: { minHeight: 44, justifyContent: 'center', alignItems: 'center' },
   splash: {
     justifyContent: 'center',
     alignItems: 'center',

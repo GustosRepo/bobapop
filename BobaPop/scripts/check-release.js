@@ -1,0 +1,13 @@
+process.env.NODE_ENV ||= 'production';
+const { load } = require('@expo/env');
+load(process.cwd());
+const platform = process.argv[2];
+if (platform && !['ios', 'android'].includes(platform)) throw new Error('Use check:release -- ios or android.');
+process.env.EAS_BUILD_PROFILE = 'production';
+if (platform) process.env.EAS_BUILD_PLATFORM = platform;
+else delete process.env.EAS_BUILD_PLATFORM;
+require('../app.config.js');
+const endpoint = process.env.EXPO_PUBLIC_ANALYTICS_ENDPOINT;
+if (endpoint && !endpoint.startsWith('https://')) throw new Error('Production analytics must use HTTPS.');
+require('./check-asset-rights.js');
+console.log(`Production configuration passed for ${platform || 'both platforms'}.`);

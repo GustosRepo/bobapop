@@ -5,43 +5,60 @@ import {
   StyleSheet,
   TouchableOpacity,
   StatusBar,
-  Dimensions,
+  ScrollView,
   Image,
   Animated,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { LinearGradient } from 'expo-linear-gradient';
 import { WorldTheme } from '../constants/themes';
 import { IMAGES } from '../assets/images';
 
 interface Props {
   score: number;
+  firstClear: boolean;
+  badgeUnlocks: string[];
+  energyRefund: number;
+  unlimitedEnergy: boolean;
   stars: number;
   levelNumber: number;
   theme: WorldTheme;
   isLast: boolean;
   isWorldBoss: boolean;
+  chapter: number;
+  isChapterComplete: boolean;
   onNext: () => void;
   onReplay: () => void;
   onMenu: () => void;
 }
 
-const { width: SW } = Dimensions.get('window');
 
 export const LevelCompleteScreen: React.FC<Props> = ({
   score,
+  firstClear,
+  badgeUnlocks,
+  energyRefund,
+  unlimitedEnergy,
   stars,
   levelNumber,
   theme,
   isLast,
   isWorldBoss,
+  chapter,
+  isChapterComplete,
   onNext,
   onReplay,
   onMenu,
 }) => {
+  const insets = useSafeAreaInsets();
+  const reducedMotion = useReducedMotion();
   const title = isLast
     ? 'All Worlds Cleared!'
+    : isChapterComplete
+    ? `Chapter ${chapter} Cleared!`
     : isWorldBoss
-    ? 'World Cleared!'
+    ? 'Boss Defeated!'
     : 'Level Complete!';
 
   // ── Star pop-in animation ───────────────────────────────────────────────
@@ -52,6 +69,7 @@ export const LevelCompleteScreen: React.FC<Props> = ({
   ]).current;
 
   useEffect(() => {
+    if (reducedMotion) { starAnims.forEach((anim) => anim.setValue(1)); return; }
     Animated.stagger(
       200,
       starAnims.map((a) =>
@@ -63,12 +81,12 @@ export const LevelCompleteScreen: React.FC<Props> = ({
         }),
       ),
     ).start();
-  }, []);
+  }, [reducedMotion]);
 
   return (
     <LinearGradient colors={theme.background as [string, string, string]} style={styles.root}>
       <StatusBar hidden />
-      <View style={styles.content}>
+      <ScrollView style={{ width: '100%' }} contentContainerStyle={[styles.content, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
         <Image
           source={
             stars === 3
@@ -130,33 +148,42 @@ export const LevelCompleteScreen: React.FC<Props> = ({
           </Text>
         </View>
 
+        {firstClear && <View style={styles.clearReward} accessibilityLiveRegion="polite">
+          <Text style={styles.clearRewardText}>{energyRefund > 0 ? `First clear! +${energyRefund} Energy returned` : unlimitedEnergy ? 'First clear! Your Energy stays unlimited.' : 'First clear!'}</Text>
+        </View>}
+        {badgeUnlocks.map((name) => <Text key={name} style={styles.clearRewardText} accessibilityLiveRegion="polite">{name} badge unlocked! Equip it in your profile.</Text>)}
+        <Text style={styles.rewardHint}>Stars advance your rank. Bobas from this clear unlock badge styles.</Text>
+
         <View style={styles.buttons}>
           {!isLast && (
-            <TouchableOpacity
+            <TouchableOpacity accessibilityRole="button"
               style={[styles.btn, styles.btnPrimary, { backgroundColor: theme.paddleColor }]}
               onPress={onNext}
             >
               <Text style={styles.btnTextPrimary}>
-                {isWorldBoss ? 'Next World →' : 'Next Level →'}
+                {isChapterComplete ? 'Next Chapter →' : isWorldBoss ? 'Next World →' : 'Next Level →'}
               </Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button"
             style={[styles.btn, { borderColor: theme.accentColor, borderWidth: 1.5 }]}
             onPress={onReplay}
           >
             <Text style={[styles.btnTextSecondary, { color: theme.accentColor }]}>Replay</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.menuBtn} onPress={onMenu}>
+          <TouchableOpacity accessibilityRole="button" style={styles.menuBtn} onPress={onMenu}>
             <Text style={[styles.menuText, { color: theme.accentColor }]}>← Levels</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </ScrollView>
     </LinearGradient>
   );
 };
 
 const styles = StyleSheet.create({
+  clearReward: { padding: 12, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.12)' },
+  clearRewardText: { color: '#FFF5DD', fontSize: 16, fontWeight: '800', textAlign: 'center' },
+  rewardHint: { color: '#FFF5DD', fontSize: 13, textAlign: 'center', opacity: 0.85 },
   root: {
     flex: 1,
     justifyContent: 'center',
@@ -166,7 +193,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 16,
     paddingHorizontal: 32,
-    width: SW,
+    width: '100%',
+    flexGrow: 1,
+    justifyContent: 'center',
   },
   mascot: {
     width: 140,
