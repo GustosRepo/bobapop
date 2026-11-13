@@ -112,7 +112,7 @@ export const OnboardingModal: React.FC<Props> = ({ visible, onDone }) => {
 
   return (
     <Modal visible={visible} transparent animationType={reducedMotion ? "none" : "fade"} statusBarTranslucent onRequestClose={onDone}>
-      <View style={styles.root}>
+      <View style={[styles.root, { paddingLeft: insets.left + 24, paddingRight: insets.right + 24 }]}>
         <LinearGradient
           colors={['#2A0F05', '#7A421C', '#F2BE68']}
           style={StyleSheet.absoluteFill}
@@ -123,7 +123,7 @@ export const OnboardingModal: React.FC<Props> = ({ visible, onDone }) => {
           style={StyleSheet.absoluteFill}
         />
 
-        <ScrollView contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top, paddingBottom: insets.bottom + 12 }}>
+        <ScrollView style={{ width: '100%', maxWidth: 520, alignSelf: 'center' }} contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }}>
         <View style={styles.topRow}>
           <Text style={styles.brand}>BobaPop</Text>
           <Pressable onPress={onDone} hitSlop={14}>
@@ -136,7 +136,7 @@ export const OnboardingModal: React.FC<Props> = ({ visible, onDone }) => {
             <Text style={[styles.eyebrow, { color: slide.accent }]}>{slide.eyebrow}</Text>
           </View>
 
-          <View style={[styles.artStage, { width: Math.min(310, width - 60), height: Math.min(280, height * 0.32) }]}>
+          <View style={[styles.artStage, { width: Math.max(0, Math.min(310, width - insets.left - insets.right - 60)), height: Math.min(280, height * 0.32) }]}>
             <View style={[styles.artGlow, { backgroundColor: slide.accent }]} />
             {slide.supportingArt && (
               <Image source={slide.supportingArt} style={styles.supportingArt} resizeMode="contain" />

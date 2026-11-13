@@ -13,6 +13,8 @@ interface Props {
   activePowerUps: ActivePowerUp[];
   theme: WorldTheme;
   boss?: Pick<BossBrick, 'hp' | 'maxHp' | 'enraged'> | null;
+  compact?: boolean;
+  stacked?: boolean;
   onPause: () => void;
 }
 
@@ -32,25 +34,26 @@ export const HUD: React.FC<Props> = ({
   activePowerUps,
   theme,
   boss,
+  compact = false,
+  stacked = false,
   onPause,
 }) => {
 
   return (
-    <View style={styles.container}>
-      <View style={styles.topRow}>
-        <View style={{ maxWidth: '40%', flexShrink: 1 }}>
-          <Text style={[styles.worldName, { color: theme.accentColor }]}>{worldName}</Text>
-          <Text style={[styles.levelText, { color: theme.ballColor }]}>Level {level}</Text>
-          {levelName && <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '700', color: theme.ballColor }}>{levelName}</Text>}
+    <View style={[styles.container, compact && styles.compactContainer]}>
+      <View style={[styles.topRow, stacked && { flexDirection: 'column', gap: 16 }]}>
+        <View style={{ flex: stacked ? undefined : 1, minWidth: 0 }}>
+          <Text numberOfLines={1} style={[styles.worldName, { color: theme.accentColor }]}>{worldName}</Text>
+          <Text style={[styles.levelText, compact && { fontSize: 16 }, { color: theme.ballColor }]}>Level {level}</Text>
+          {!compact && levelName && <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '700', color: theme.ballColor }}>{levelName}</Text>}
         </View>
-        <View style={styles.scoreBlock}>
-          <Text style={[styles.score, { color: theme.ballColor }]}>{score.toLocaleString()}</Text>
+        <View style={[styles.scoreBlock, stacked && { flex: 0 }]}>
+          <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.score, compact && { fontSize: 18 }, { color: theme.ballColor }]}>{score.toLocaleString()}</Text>
         </View>
         <View style={styles.rightBlock}>
           <View style={styles.livesRow}>
-            {Array.from({ length: lives }).map((_, i) => (
-              <Image key={i} source={IMAGES.lifeIcon} style={styles.lifeIcon} resizeMode="contain" />
-            ))}
+            <Image source={IMAGES.lifeIcon} style={styles.lifeIcon} resizeMode="contain" />
+            <Text accessibilityLabel={`${lives} lives`} style={{ color: theme.ballColor, fontSize: compact ? 16 : 18, fontWeight: '800' }}>×{lives}</Text>
             <TouchableOpacity accessibilityRole="button" accessibilityLabel="Pause game" onPress={onPause} style={styles.pauseBtn}>
               <Image source={IMAGES.pauseBtn} style={styles.pauseIcon} resizeMode="contain" />
             </TouchableOpacity>
@@ -105,6 +108,7 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 8,
   },
+  compactContainer: { paddingHorizontal: 8, paddingTop: 6, paddingBottom: 4 },
   topRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -122,6 +126,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   scoreBlock: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 6,
     alignItems: 'center',
   },
   score: {
@@ -142,7 +149,10 @@ const styles = StyleSheet.create({
     height: 28,
   },
   pauseBtn: {
-    padding: 2,
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginLeft: 4,
   },
   pauseIcon: {

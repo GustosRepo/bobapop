@@ -48,7 +48,7 @@ module.exports = {
     name: 'BobaPop',
     slug: 'bobapop',
     version: '1.0.0',
-    orientation: 'portrait',
+    orientation: 'default',
     icon: './assets/icon.png',
     userInterfaceStyle: 'dark',
     splash: {
@@ -60,7 +60,6 @@ module.exports = {
       supportsTablet: false,
       bundleIdentifier: 'com.codewerx.bobapop',
       statusBarHidden: true,
-      requireFullScreen: true,
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
       },

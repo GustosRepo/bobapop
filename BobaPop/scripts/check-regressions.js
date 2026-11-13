@@ -302,6 +302,88 @@ test('expanded campaign preserves ranks and resolves themes from actual level me
   assert.equal(getWorldForLevel(39).id, 'thai_tea');
 });
 
+test('resizable boards preserve proportions and map touches inside asymmetric safe areas', () => {
+  const { fitGameViewport, paddleXFromWindow } = load('src/game/viewport.ts');
+  for (const [width, height] of [[320,568], [440,620], [955,674], [674,955], [568,320], [320,320]]) {
+    const insets = { top: 24, right: 64, bottom: 20, left: 8 };
+    const v = fitGameViewport(width, height, insets);
+    assert(v.left >= insets.left && v.top >= insets.top);
+    assert(v.left + v.width <= width - insets.right + 0.001);
+    assert(v.top + v.height <= height - insets.bottom + 0.001);
+    assert(Math.abs(v.width / v.height - 390 / 800) < 0.001);
+    for (const x of [0, 195, 390]) {
+      assert(Math.abs(paddleXFromWindow(37 + v.left + x * v.scale, 37, v) - x) < 0.001);
+    }
+    assert.equal(paddleXFromWindow(-100, 37, v), 0);
+    assert.equal(paddleXFromWindow(5000, 37, v), 390);
+    if (v.hudBesideBoard) assert(v.hudLeft + v.hudWidth <= v.left);
+  }
+  assert.equal(paddleXFromWindow(0, 0, fitGameViewport(0, 0, {top:0,right:0,bottom:0,left:0})), 195);
+});
+
+test('fold-like resize pauses the existing run, preserves its board, and updates touch mapping', async () => {
+  const React = require('react'); const { create, act } = require('react-test-renderer');
+  global.IS_REACT_ACT_ENVIRONMENT = true;
+  let game = { ...state(), phase: 'idle' }; let pauses = 0; let paddleX; let pan;
+  let insets = { top: 24, right: 60, bottom: 20, left: 8 };
+  const noop = () => {};
+  const timers = [];
+  const native = Object.fromEntries(['View','Text','Image','TouchableOpacity','StatusBar','Modal','ScrollView'].map(name => [name, name]));
+  native.StyleSheet = { create: value => value };
+  native.PanResponder = { create: config => { pan = config; return { panHandlers: {} }; } };
+  native.BackHandler = { addEventListener: () => ({ remove: noop }) };
+  native.Animated = { View: 'AnimatedView', Value: class { setValue() {} stopAnimation() {} } };
+  const theme = { name: 'Test', accentColor:'#fff', ballColor:'#fff', background:['#222','#333','#444'] };
+  const { GameScreen } = loader({ react: React, 'react-native': native,
+    'react-native-safe-area-context': { useSafeAreaInsets: () => insets },
+    '../hooks/useReducedMotion': { useReducedMotion: () => true },
+    '../hooks/useGameKeyboard': { useGameKeyboard: noop },
+    '../hooks/useGameLoop': { useGameLoop: () => ({ gameState: game, worldTheme: theme,
+      movePaddle: x => { paddleX = x; }, launchBall: noop, resumeGame: noop,
+      pauseGame: () => { pauses++; game = { ...game, phase: 'paused' }; } }) },
+    '../components/GameCanvas': { GameCanvas: props => React.createElement('Canvas', props) },
+    '../components/HUD': { HUD: props => React.createElement('HUD', props) },
+  }, { setTimeout: (fn, delay) => { timers.push({fn, delay}); return timers.length; }, clearTimeout: noop })('src/screens/GameScreen.tsx');
+  let renderer;
+  const props = { levelIndex: 5, energy: 4, unlimitedEnergy:false, maxEnergy:5, nextEnergyInMs:0,
+    seenOnboarding:{}, onMarkOnboardingSeen:noop, onBack:noop, onRestart:noop, onLevelComplete:noop, onGameOver:noop };
+  await act(async () => { renderer = create(React.createElement(GameScreen, props), {
+    createNodeMock: () => ({ measureInWindow: cb => cb(37, 0, 955, 674) }),
+  }); });
+  const layout = async (width, height) => act(async () => {
+    renderer.root.findAllByType('View').find(n => n.props.onLayout).props.onLayout({ nativeEvent:{layout:{width,height}} });
+  });
+  await layout(390,844);
+  assert.equal(pauses, 0);
+  await act(async () => timers.find(timer => timer.delay === 3100).fn());
+  assert.equal(pan.onStartShouldSetPanResponder(), true);
+  const originalBoard = game.bricks;
+  game = { ...game, phase: 'playing' };
+  await layout(955,674);
+  assert.equal(pauses, 1);
+  assert.equal(game.bricks, originalBoard);
+  await act(async () => renderer.update(React.createElement(GameScreen, props)));
+  assert.equal(pan.onStartShouldSetPanResponder(), false);
+  const canvas = renderer.root.findByType('Canvas');
+  assert.equal(canvas.props.scaleX, canvas.props.scaleY);
+  assert.equal(canvas.props.state.bricks, originalBoard);
+  const pause = renderer.root.findAllByType('Modal').find(n => n.props.visible);
+  assert(pause);
+  // A changed horizontal reserved area also pauses without resetting progress.
+  insets = { ...insets, left: 70, right: 0 };
+  await act(async () => renderer.update(React.createElement(GameScreen, props)));
+  assert.equal(pauses, 2);
+  assert.equal(game.bricks, originalBoard);
+  game = { ...game, phase: 'playing' };
+  await act(async () => renderer.update(React.createElement(GameScreen, props)));
+  const v = load('src/game/viewport.ts').fitGameViewport(955,674,insets);
+  pan.onPanResponderGrant({ nativeEvent: { pageX: 37 + v.left + v.width / 2 } });
+  assert(Math.abs(paddleX - 195) < 0.001);
+  pan.onPanResponderMove({}, { moveX: 37 + v.left + v.width * 0.75 });
+  assert(Math.abs(paddleX - 292.5) < 0.001);
+  await act(async () => renderer.unmount());
+});
+
 test('reward screens disclose exact rewards and enable Plus retries at zero Energy', async () => {
   const React = require('react'); const { create, act } = require('react-test-renderer');
   global.IS_REACT_ACT_ENVIRONMENT = true;
@@ -309,7 +391,7 @@ test('reward screens disclose exact rewards and enable Plus retries at zero Ener
   native.StyleSheet = { create: value => value };
   native.Animated = { Text: 'AnimatedText', Value: class { setValue() {} interpolate() { return 1; } } };
   const components = loader({ react: React, 'react-native': native,
-    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 24, bottom: 20, left: 8, right: 64 }) },
     'expo-linear-gradient': { LinearGradient: 'Gradient' },
     '../hooks/useReducedMotion': { useReducedMotion: () => true } });
   const { GameOverScreen } = components('src/screens/GameOverScreen.tsx');
@@ -321,6 +403,7 @@ test('reward screens disclose exact rewards and enable Plus retries at zero Ener
     continueOffer: getContinueOffer(5, 0, true), adAvailable: true, adUnavailable: false,
     energy: 0, maxEnergy: 5, nextEnergyInMs: 10000, onContinue() {}, onWatchEnergyAd: watch, onRetry: retry, onMenu() {}, onOpenPlus() {} };
   await act(async () => { renderer = create(React.createElement(GameOverScreen, props)); });
+  assert.equal(renderer.root.findByType('ScrollView').props.contentContainerStyle[1].paddingRight, 88);
   assert.equal(renderer.root.findAllByType('TouchableOpacity').find(node => node.props.onPress === retry).props.disabled, false);
   assert(JSON.stringify(renderer.toJSON()).includes('Retry Level · Unlimited Energy'));
   await act(async () => renderer.update(React.createElement(GameOverScreen, { ...props, adsRemoved: false, continueOffer: getContinueOffer(5, 0, false) })));

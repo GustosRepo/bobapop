@@ -72,7 +72,7 @@ export const WorldIntroModal: React.FC<Props> = ({ worldIndex, world, onDone }) 
         />
 
         {/* ── Content ── */}
-        <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
+        <ScrollView style={{ width: '100%' }} contentContainerStyle={[styles.content, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24, paddingLeft: insets.left + 24, paddingRight: insets.right + 24 }]}>
           {/* World badge pill */}
           <View style={[styles.badge, { borderColor: world.accentColor + '99', backgroundColor: world.accentColor + '22' }]}>
             <Text style={[styles.badgeText, { color: world.accentColor }]}>

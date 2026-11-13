@@ -50,6 +50,12 @@ These commands read local environment values; they do not fetch EAS account sett
 
 Before submitting a release, build fresh native binaries and verify purchase, cancellation, restore, expiration, ad reward, ad dismissal, background/resume, small screens, and large text on devices. Native projects were regenerated for SDK 58; full Xcode is required to compile iOS. SDK 58 targets iOS 16.4 and newer. Do not reuse an SDK 55 binary with this source.
 
+## Resizing and iPhone Duo
+
+Production iOS builds pin the EAS Xcode 27.1 image, which enables the Duo display behavior. SDK 58 generates the scene lifecycle. The game measures its containing view, fits one proportional board inside all four safe-area edges, and moves the HUD beside the board in wide windows. Resizing pauses the current run without spending Energy or resetting its board. Touch input accounts for the board's scale and its position in the window. Menus and sheets protect horizontal camera and system-bar regions and scroll in short windows.
+
+Regression and browser checks cover changing window sizes and asymmetric insets; these do not replace native Duo testing. With Xcode 27.1 or newer, run on the iPhone Duo simulator in Device Hub and test closed, open, rotated, partially folded, and split-view layouts. Resize during a moving-ball run and while each modal is visible. Verify Resume keeps the score, lives, Energy, and remaining bricks, and that paddle touches line up with the resized board. Test purchases, restore, ad presentation and dismissal, and physical-device folding through TestFlight before claiming verified Duo support. This workspace has Command Line Tools only, so the native simulator checklist remains manual.
+
 ## Campaign
 
 Chapter 1 keeps the original 20 levels and their IDs. Chapter 2 adds levels 21–40: 16 new layouts and four boss rematches, with named stages and guaranteed power-ups. Each world has a five-level row for each chapter. Finish level 20 to start Chapter 2; saves that already completed it unlock level 21 automatically. There are 120 stars to collect, with player ranks extending to Boba Grandmaster.

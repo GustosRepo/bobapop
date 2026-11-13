@@ -192,7 +192,7 @@ export const LevelSelectScreen: React.FC<Props> = ({
       <StatusBar hidden />
 
       {/* ── Top Bar ── */}
-      <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
+      <View style={[styles.topBar, { paddingTop: insets.top + 8, paddingLeft: insets.left + 20, paddingRight: insets.right + 20 }]}>
         {/* Player Level Badge */}
         <TouchableOpacity accessibilityRole="button" accessibilityLabel="View player statistics" style={styles.playerBadge} activeOpacity={0.8} onPress={() => {
           if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -249,7 +249,8 @@ export const LevelSelectScreen: React.FC<Props> = ({
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        style={{ marginLeft: insets.left, marginRight: insets.right }}
+        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 40 }]}
         showsVerticalScrollIndicator={false}
       >
         {/* ── Big Mascot ── */}
@@ -322,7 +323,7 @@ export const LevelSelectScreen: React.FC<Props> = ({
       />
 
       <Modal visible={statsVisible} transparent animationType="fade" onRequestClose={() => setStatsVisible(false)}>
-        <View style={styles.statsBackdrop}>
+        <View style={[styles.statsBackdrop, { paddingLeft: insets.left + 24, paddingRight: insets.right + 24, paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}>
           <TouchableOpacity accessible={false} style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setStatsVisible(false)} />
           <View style={styles.statsCard}>
             <LinearGradient

@@ -74,7 +74,7 @@ export const SettingsModal: React.FC<Props> = ({
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <TouchableOpacity accessibilityRole="button" style={styles.backdrop} activeOpacity={1} onPress={onClose}>
+      <TouchableOpacity accessibilityRole="button" style={[styles.backdrop, { paddingLeft: insets.left, paddingRight: insets.right, paddingTop: insets.top + 12 }]} activeOpacity={1} onPress={onClose}>
         <Animated.View
           style={[styles.sheet, { transform: [{ scale: scaleAnim }], opacity: opacityAnim }]}
         >
@@ -214,6 +214,9 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
+    width: '100%',
+    maxWidth: 520,
+    alignSelf: 'center',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     overflow: 'hidden',

@@ -71,7 +71,7 @@ export const GameOverScreen: React.FC<Props> = ({
   return (
     <LinearGradient colors={['#0A0A0A', '#1A0A0A', '#2A0A0A']} style={styles.root}>
       <StatusBar hidden />
-      <ScrollView style={{ width: '100%' }} contentContainerStyle={[styles.content, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
+      <ScrollView style={{ width: '100%' }} contentContainerStyle={[styles.content, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24, paddingLeft: insets.left + 24, paddingRight: insets.right + 24 }]}>
         <Image source={IMAGES.mascotSad} style={styles.mascot} resizeMode="contain" />
         <Text style={styles.title}>Boba break!</Text>
         <Text style={[styles.levelText, { color: theme.accentColor }]}>
@@ -183,6 +183,7 @@ const styles = StyleSheet.create({
   },
   scoreCard: {
     width: '100%',
+    maxWidth: 440,
     borderRadius: 20,
     borderWidth: 1.5,
     paddingVertical: 24,
@@ -203,6 +204,7 @@ const styles = StyleSheet.create({
   },
   buttons: {
     width: '100%',
+    maxWidth: 440,
     gap: 12,
     marginTop: 8,
   },

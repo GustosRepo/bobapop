@@ -10,6 +10,9 @@ export const styles = StyleSheet.create({
     bottom: 0,
   },
   topBar: {
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -125,6 +128,9 @@ export const styles = StyleSheet.create({
     height: 42,
   },
   scroll: {
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
     alignItems: 'center',
     paddingBottom: 40,
   },

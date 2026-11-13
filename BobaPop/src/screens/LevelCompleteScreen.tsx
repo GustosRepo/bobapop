@@ -86,7 +86,7 @@ export const LevelCompleteScreen: React.FC<Props> = ({
   return (
     <LinearGradient colors={theme.background as [string, string, string]} style={styles.root}>
       <StatusBar hidden />
-      <ScrollView style={{ width: '100%' }} contentContainerStyle={[styles.content, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
+      <ScrollView style={{ width: '100%' }} contentContainerStyle={[styles.content, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24, paddingLeft: insets.left + 24, paddingRight: insets.right + 24 }]}>
         <Image
           source={
             stars === 3
@@ -215,6 +215,7 @@ const styles = StyleSheet.create({
   },
   scoreCard: {
     width: '100%',
+    maxWidth: 440,
     borderRadius: 20,
     borderWidth: 1.5,
     paddingVertical: 24,
@@ -234,6 +235,7 @@ const styles = StyleSheet.create({
   },
   buttons: {
     width: '100%',
+    maxWidth: 440,
     gap: 12,
     marginTop: 8,
   },

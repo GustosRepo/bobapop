@@ -3,13 +3,14 @@ import {
   Animated,
   StyleSheet,
   PanResponder,
-  useWindowDimensions,
+  LayoutChangeEvent,
   BackHandler,
   StatusBar,
   Text,
   Image,
   TouchableOpacity,
   Modal,
+  ScrollView,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,7 +20,7 @@ import { useGameKeyboard } from '../hooks/useGameKeyboard';
 import { useGameLoop } from '../hooks/useGameLoop';
 import { GameCanvas } from '../components/GameCanvas';
 import { HUD } from '../components/HUD';
-import { GAME_WIDTH, GAME_HEIGHT } from '../constants/gameConfig';
+import { fitGameViewport, paddleXFromWindow } from '../game/viewport';
 import { LEVELS } from '../game/levels';
 import { GameState } from '../game/types';
 
@@ -54,14 +55,19 @@ export const GameScreen: React.FC<Props> = ({
   seenOnboarding,
   onMarkOnboardingSeen,
 }) => {
-  const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const rootRef = useRef<React.ComponentRef<typeof View>>(null);
+  const windowLeftRef = useRef(0);
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
-  const SCALE_X = SCREEN_W / GAME_WIDTH;
-  const SCALE_Y = SCREEN_H / GAME_HEIGHT;
-  const SAFE_TOP = insets.top;
-  const inputScaleRef = useRef(SCALE_X);
-  inputScaleRef.current = SCALE_X;
+  const viewport = fitGameViewport(size.width, size.height, insets);
+  const viewportRef = useRef(viewport);
+  viewportRef.current = viewport;
+  const onLayout = useCallback(({ nativeEvent: { layout } }: LayoutChangeEvent) => {
+    setSize(current => current.width === layout.width && current.height === layout.height
+      ? current : { width: layout.width, height: layout.height });
+    rootRef.current?.measureInWindow(x => { windowLeftRef.current = x; });
+  }, []);
   const {
 
     gameState,
@@ -71,6 +77,14 @@ export const GameScreen: React.FC<Props> = ({
     pauseGame,
     resumeGame,
   } = useGameLoop(levelIndex, initialLives, resumeState);
+
+  const resizeKey = [size.width, size.height, insets.top, insets.right, insets.bottom, insets.left].join(':');
+  const previousSizeRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!size.width || !size.height) return;
+    if (previousSizeRef.current !== null && previousSizeRef.current !== resizeKey) pauseGame();
+    previousSizeRef.current = resizeKey;
+  }, [resizeKey, size.width, size.height, pauseGame]);
 
   const displayLevel = levelIndex + 1;
   const levelName = LEVELS[levelIndex]?.name;
@@ -149,8 +163,9 @@ export const GameScreen: React.FC<Props> = ({
 
   // ── Countdown 3-2-1 GO ──────────────────────────────────────────────────────
   const [countdown, setCountdown] = useState<number | null>(3);
-  const countdownActiveRef = useRef(true);
-  countdownActiveRef.current = countdown !== null;
+  const inputEnabledRef = useRef(false);
+  inputEnabledRef.current = viewport.scale > 0 && countdown === null
+    && (gameState.phase === 'idle' || gameState.phase === 'playing');
 
   useEffect(() => {
     const timers = [
@@ -167,17 +182,19 @@ export const GameScreen: React.FC<Props> = ({
 
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => !countdownActiveRef.current,
-      onMoveShouldSetPanResponder: () => !countdownActiveRef.current,
+      onStartShouldSetPanResponder: () => inputEnabledRef.current,
+      onMoveShouldSetPanResponder: () => inputEnabledRef.current,
       onPanResponderGrant: (e) => {
+        if (!inputEnabledRef.current) return;
         if (!seenOnboardingRef.current.launch) {
           markOnboardingSeenRef.current('launch');
         }
-        movePaddleRef.current(e.nativeEvent.pageX / inputScaleRef.current);
+        movePaddleRef.current(paddleXFromWindow(e.nativeEvent.pageX, windowLeftRef.current, viewportRef.current));
         launchBallRef.current();
       },
       onPanResponderMove: (_e, gestureState) => {
-        movePaddleRef.current(gestureState.moveX / inputScaleRef.current);
+        if (!inputEnabledRef.current) return;
+        movePaddleRef.current(paddleXFromWindow(gestureState.moveX, windowLeftRef.current, viewportRef.current));
       },
     }),
   ).current;
@@ -207,18 +224,22 @@ export const GameScreen: React.FC<Props> = ({
   }, [gameState, onGameOver, onLevelComplete]);
 
   return (
-    <View style={[styles.root, { width: SCREEN_W, height: SCREEN_H }]}>
+    <View ref={rootRef} onLayout={onLayout} style={styles.root}>
       <StatusBar hidden />
+      <Image source={worldTheme.bgImage} style={StyleSheet.absoluteFill} resizeMode="cover" blurRadius={18} />
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(20,8,2,0.55)' }]} />
 
+      {viewport.scale > 0 && <>
       <Animated.View
-        style={[styles.canvasWrapper, { width: SCREEN_W, height: SCREEN_H, transform: [{ translateX: shakeAnim }] }]}
+        testID="game-board"
+        style={[styles.canvasWrapper, { left: viewport.left, top: viewport.top, width: viewport.width, height: viewport.height, transform: [{ translateX: shakeAnim }] }]}
         accessible
         accessibilityRole="adjustable"
         accessibilityLabel="Boba game paddle"
         accessibilityHint="Adjust left or right to move. Activate to launch the ball."
         accessibilityActions={[{ name: 'increment', label: 'Move right' }, { name: 'decrement', label: 'Move left' }, { name: 'activate', label: 'Launch ball' }]}
         onAccessibilityAction={({ nativeEvent }) => {
-          if (countdownActiveRef.current) return;
+          if (!inputEnabledRef.current) return;
           if (nativeEvent.actionName === 'activate') launchBall();
           else movePaddle(gameState.paddle.x + gameState.paddle.width / 2 + (nativeEvent.actionName === 'increment' ? 30 : -30));
         }}
@@ -227,10 +248,10 @@ export const GameScreen: React.FC<Props> = ({
         <GameCanvas
           state={gameState}
           theme={worldTheme}
-          width={SCREEN_W}
-          height={SCREEN_H}
-          scaleX={SCALE_X}
-          scaleY={SCALE_Y}
+          width={viewport.width}
+          height={viewport.height}
+          scaleX={viewport.scale}
+          scaleY={viewport.scale}
         />
 
         {/* Launch hint */}
@@ -243,7 +264,7 @@ export const GameScreen: React.FC<Props> = ({
           </View>
         )}
         {onboardingToast !== null && (
-          <View style={[styles.onboardingToast, { top: SAFE_TOP + 88 }]} pointerEvents="none">
+          <View style={[styles.onboardingToast, { top: 112 * viewport.scale }]} pointerEvents="none">
             <Image source={IMAGES.lifeIcon} style={styles.toastIcon} resizeMode="contain" />
             <Text style={styles.toastText}>{onboardingToast}</Text>
           </View>
@@ -264,7 +285,7 @@ export const GameScreen: React.FC<Props> = ({
 
       </Animated.View>
 
-      <View style={[styles.hudOverlay, { top: SAFE_TOP }]} pointerEvents="box-none">
+      <View style={[styles.hudOverlay, { top: viewport.hudTop, left: viewport.hudLeft, width: viewport.hudWidth }]} pointerEvents="box-none">
         <HUD
           score={gameState.score}
           lives={gameState.lives}
@@ -273,15 +294,18 @@ export const GameScreen: React.FC<Props> = ({
           worldName={worldTheme.name}
           activePowerUps={gameState.activePowerUps}
           theme={worldTheme}
+          compact={viewport.hudWidth < 360 || viewport.scale < 0.9}
+          stacked={viewport.hudBesideBoard}
           boss={gameState.boss && !gameState.boss.defeated ? gameState.boss : null}
           onPause={pauseGame}
         />
       </View>
+      </>}
 
       {/* Pause Modal */}
       <Modal visible={gameState.phase === 'paused'} transparent animationType={reducedMotion ? "none" : "fade"} onRequestClose={resumeGame}>
-        <View style={styles.overlay}>
-          <View style={[styles.modal, { backgroundColor: worldTheme.background[1] }]}>
+        <View style={[styles.overlay, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12, paddingLeft: insets.left + 16, paddingRight: insets.right + 16 }]}>
+          <ScrollView style={[styles.modal, { backgroundColor: worldTheme.background[1] }]} contentContainerStyle={styles.modalContent}>
             <Text style={[styles.modalTitle, { color: worldTheme.ballColor }]}>Paused</Text>
             <TouchableOpacity accessibilityRole="button"
               style={[styles.modalBtn, { backgroundColor: worldTheme.paddleColor }]}
@@ -307,7 +331,7 @@ export const GameScreen: React.FC<Props> = ({
             <TouchableOpacity accessibilityRole="button" style={styles.backBtn} onPress={onBack}>
               <Text style={[styles.backText, { color: worldTheme.accentColor }]}>← Menu</Text>
             </TouchableOpacity>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
     </View>
@@ -319,8 +343,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     left: 0,
+    right: 0,
+    bottom: 0,
 
     backgroundColor: '#2A0F05',
+    overflow: 'hidden',
   },
   canvasWrapper: {
     position: 'absolute',
@@ -332,7 +359,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     left: 0,
-    right: 0,
   },
   launchHint: {
     position: 'absolute',
@@ -393,8 +419,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modal: {
-    width: 280,
+    width: '100%',
+    maxWidth: 320,
+    maxHeight: '100%',
+    flexGrow: 0,
     borderRadius: 24,
+  },
+  modalContent: {
     padding: 32,
     alignItems: 'center',
     gap: 14,

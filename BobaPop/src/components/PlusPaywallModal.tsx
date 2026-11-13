@@ -1,5 +1,6 @@
 import { openExternalLink } from '../utils/openExternalLink';
 import React from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Image,
   Platform,
@@ -47,9 +48,10 @@ export const PlusPaywallModal: React.FC<Props> = ({
   onRestore,
   onReloadProducts,
 }) => {
+  const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
+      <View style={[styles.backdrop, { paddingLeft: insets.left + 22, paddingRight: insets.right + 22, paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]}>
         <View style={styles.card}>
           <LinearGradient
             colors={['#FFF7E8', '#F6D6A8', '#C8873E']}

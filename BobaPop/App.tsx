@@ -490,7 +490,7 @@ function BobaPop() {
       </Animated.View>
 
       {saveError && (
-        <View style={[styles.saveNotice, { top: insets.top + 8 }]} accessibilityLiveRegion="assertive">
+        <View style={[styles.saveNotice, { top: insets.top + 8, left: insets.left + 12, right: insets.right + 12 }]} accessibilityLiveRegion="assertive">
           <Text style={styles.saveNoticeText}>{saveError}</Text>
           <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retry saving or loading progress" onPress={retrySave} style={styles.retrySave}>
             <Text style={styles.saveNoticeText}>Retry</Text>
