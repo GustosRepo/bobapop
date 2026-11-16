@@ -12,7 +12,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { WorldTheme } from '../constants/themes';
 import { IMAGES } from '../assets/images';
-import { ENERGY_AD_REWARD } from '../monetization/economy';
+import { getEnergyAdReward } from '../monetization/economy';
+import { RewardedOfferButton } from '../components/RewardedOfferButton';
 import { ContinueOffer } from '../monetization/continueSystem';
 
 interface Props {
@@ -23,6 +24,8 @@ interface Props {
   continueOffer: ContinueOffer;
   adAvailable: boolean;
   adUnavailable: boolean;
+  energyAdReady: boolean;
+  energyAdLoading: boolean;
   energy: number;
   maxEnergy: number;
   nextEnergyInMs: number;
@@ -42,6 +45,8 @@ export const GameOverScreen: React.FC<Props> = ({
   continueOffer,
   adAvailable,
   adUnavailable,
+  energyAdReady,
+  energyAdLoading,
   energy,
   maxEnergy,
   nextEnergyInMs,
@@ -119,15 +124,10 @@ export const GameOverScreen: React.FC<Props> = ({
                 : `Next energy in ${nextEnergyMinutes}m`}
             </Text>
           </TouchableOpacity>
-          {!canRetryFresh && adAvailable && !adsRemoved && (
-            <TouchableOpacity accessibilityRole="button"
-              style={styles.energyAdBtn}
-              onPress={onWatchEnergyAd}
-              activeOpacity={0.85}
-            >
-              <Image source={IMAGES.lifeIcon} style={styles.energyAdIcon} resizeMode="contain" />
-              <Text style={styles.energyAdText}>{`Watch Ad · +${ENERGY_AD_REWARD} Energy`}</Text>
-            </TouchableOpacity>
+          {energy < maxEnergy && !adsRemoved && (
+            <RewardedOfferButton title={`Watch Ad · +${getEnergyAdReward(energy, maxEnergy)} Energy`}
+              detail={`Energy ${energy}/${maxEnergy} · ${canRetryFresh ? 'Stock up for another run' : 'Refill to start a fresh run'}`}
+              ready={energyAdReady} loading={energyAdLoading} onPress={onWatchEnergyAd} />
           )}
           <TouchableOpacity accessibilityRole="button"
             style={[styles.btn, styles.btnOutline, { borderColor: theme.accentColor }]}
@@ -264,28 +264,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '700',
-  },
-  energyAdBtn: {
-    width: '100%',
-    paddingVertical: 13,
-    paddingHorizontal: 18,
-    borderRadius: 16,
-    backgroundColor: 'rgba(245,166,35,0.18)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(245,166,35,0.62)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 9,
-  },
-  energyAdIcon: {
-    width: 24,
-    height: 24,
-  },
-  energyAdText: {
-    color: '#FFD68A',
-    fontSize: 16,
-    fontWeight: '900',
   },
   btnOutline: {
     borderWidth: 1.5,

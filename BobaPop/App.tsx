@@ -20,9 +20,12 @@ import { preloadMusic, playMusic, setMusicEnabled } from './src/hooks/useMusic';
 import { AppState, AppStateStatus } from 'react-native';
 import { pauseMusic, resumeMusic } from './src/hooks/useMusic';
 import { useRewardedAd } from './src/hooks/useRewardedAd';
-import { CompletionReward, ENERGY_AD_REWARD } from './src/monetization/economy';
+import type { RewardedAdResult } from './src/hooks/useRewardedAd';
+import { CompletionReward, ENERGY_AD_REWARD, getEnergyAdReward } from './src/monetization/economy';
 import { getContinueOffer } from './src/monetization/continueSystem';
 import {
+  trackAdEvent,
+  trackGameEvent,
   trackContinueAccepted,
   trackContinueOffer,
   configureAnalytics,
@@ -78,6 +81,9 @@ function BobaPop() {
   const startLockedRef = useRef(false);
   const continuePendingRef = useRef(false);
   const energyAdPendingRef = useRef(false);
+  const bonusAdPendingRef = useRef(false);
+  const sessionTrackedRef = useRef(false);
+  const offerTrackingRef = useRef<{ screen: Screen | null; keys: Set<string> }>({ screen: null, keys: new Set() });
   const [runContinues, setRunContinues] = useState<Record<number, number>>({});
   const [plusPaywallVisible, setPlusPaywallVisible] = useState(false);
   const [
@@ -110,13 +116,14 @@ function BobaPop() {
       } finally { clearTimeout(timer); }
     });
     flushAnalyticsQueue().catch(() => {});
+    return () => configureAnalytics(null);
   }, []);
 
   // ── App background / foreground — pause music when backgrounded ────────────
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
-      if (state === 'active') { resumeMusic(); flushAnalyticsQueue().catch(() => {}); }
-      else pauseMusic();
+      if (state === 'active') { resumeMusic(); trackGameEvent('session_foreground'); flushAnalyticsQueue().catch(() => {}); }
+      else { pauseMusic(); trackGameEvent('session_background'); }
     });
     return () => sub.remove();
   }, []);
@@ -125,7 +132,7 @@ function BobaPop() {
     loading, ready: saveReady, saveError, retrySave, unlockedUpTo, levelStars, levelHighScores, totalBobas, selectedBadgeId, selectBadge,
     seenWorlds, soundEnabled, hapticsEnabled, adsRemoved, seenOnboarding,
     energy, maxEnergy, nextEnergyInMs,
-    recordLevelComplete, markWorldSeen, markOnboardingSeen, updateSettings, setAdsRemovedEntitlement, isLevelUnlocked, spendEnergy, addEnergy,
+    recordLevelComplete, claimClearBonus, markWorldSeen, markOnboardingSeen, updateSettings, setAdsRemovedEntitlement, isLevelUnlocked, spendEnergy, addEnergy,
   } = useSaveData(DEV_UNLOCK_ALL, levelIds);
 
   useEffect(() => {
@@ -134,7 +141,15 @@ function BobaPop() {
     }
   }, [loading, saveReady, seenOnboarding.app_intro]);
 
-  const { isLoaded: rewardedAdLoaded, status: rewardedAdStatus, showAd, privacyOptionsRequired, openPrivacyOptions } = useRewardedAd(saveReady && !loading && seenOnboarding.app_intro && !adsRemoved);
+  const { statuses: adStatuses, busy: adBusy, showAd, privacyOptionsRequired, openPrivacyOptions } = useRewardedAd(saveReady && !loading && seenOnboarding.app_intro && !adsRemoved);
+  const energyAdReady = !adBusy && adStatuses.energy === 'ready';
+  const continueAdReady = !adBusy && adStatuses.continue === 'ready';
+  useEffect(() => {
+    if (!saveReady || loading || sessionTrackedRef.current) return;
+    sessionTrackedRef.current = true;
+    trackGameEvent('session_start', { plus_active: adsRemoved,
+      completed_levels: Object.values(levelStars).filter((stars) => stars > 0).length });
+  }, [adsRemoved, levelStars, loading, saveReady]);
   const setPlusEntitlement = useCallback((active: boolean, expiresAt?: number | null) => {
     setAdsRemovedEntitlement(active, expiresAt);
   }, [setAdsRemovedEntitlement]);
@@ -169,13 +184,24 @@ function BobaPop() {
   }, [screen]);
 
   useEffect(() => {
-    if (screen.name !== 'over') return;
-    const continuesUsed = runContinues[screen.runId] ?? 0;
-    const offer = getContinueOffer(screen.levelIndex, continuesUsed, adsRemoved);
-    if (offer.canShow) {
-      trackContinueOffer(screen.levelIndex, offer.continueNumber, offer.rewardLives);
+    if (offerTrackingRef.current.screen !== screen) offerTrackingRef.current = { screen, keys: new Set() };
+    if (adsRemoved || adBusy) return;
+    const record = (placement: 'continue' | 'energy' | 'clear_bonus', key: string, reward: number) => {
+      if (adStatuses[placement] !== 'ready' || offerTrackingRef.current.keys.has(key)) return;
+      offerTrackingRef.current.keys.add(key);
+      trackAdEvent('ad_offer_shown', placement, { source: screen.name, reward_amount: reward,
+        level_number: screen.name === 'select' ? null : screen.levelIndex + 1 });
+    };
+    if (screen.name === 'over') {
+      const offer = getContinueOffer(screen.levelIndex, runContinues[screen.runId] ?? 0, false);
+      if (offer.canShow && continueAdReady && !offerTrackingRef.current.keys.has('continue')) {
+        trackContinueOffer(screen.levelIndex, offer.continueNumber, offer.rewardLives);
+        record('continue', 'continue', offer.rewardLives);
+      }
     }
-  }, [adsRemoved, runContinues, screen]);
+    if (screen.name !== 'game' && energy < maxEnergy) record('energy', `energy_${energy}`, getEnergyAdReward(energy, maxEnergy));
+    if (screen.name === 'complete' && screen.bonusClaimId) record('clear_bonus', 'clear_bonus', screen.bobasEarned);
+  }, [adBusy, adStatuses, adsRemoved, continueAdReady, energy, maxEnergy, runContinues, screen]);
 
   // ── Screen fade transition ──────────────────────────────────────────────────────
   const screenOpacity = useRef(new Animated.Value(1)).current;
@@ -187,7 +213,7 @@ function BobaPop() {
     });
   }, [screenOpacity, reducedMotion]);
 
-  const handleWatchEnergyAd = useCallback(() => {
+  const handleWatchEnergyAd = useCallback((source = 'select') => {
     if (energy >= maxEnergy) {
       Alert.alert('Energy full', 'You are already stocked up.');
       return;
@@ -196,8 +222,8 @@ function BobaPop() {
 
     if (adsRemoved) return;
 
-    if (!rewardedAdLoaded) {
-      const message = rewardedAdStatus === 'loading'
+    if (!energyAdReady) {
+      const message = adStatuses.energy === 'loading'
         ? 'The ad is still loading. Try again in a moment.'
         : 'Rewarded ads are not available right now.';
       Alert.alert('Ad unavailable', message);
@@ -206,14 +232,18 @@ function BobaPop() {
 
     const energyBefore = energy;
     energyAdPendingRef.current = true;
-    showAd((result) => {
+    let settled = false;
+    showAd('energy', (result) => {
+      if (settled) return;
+      settled = true;
       energyAdPendingRef.current = false;
       if (result !== 'watched') { trackEnergyAdResult(result, energyBefore, energyBefore); return; }
       const grant = addEnergy(ENERGY_AD_REWARD);
       trackEnergyAdResult(result, grant.energyBefore, grant.energyAfter);
+      trackAdEvent('ad_reward_granted', 'energy', { source, reward_type: 'energy', reward_amount: grant.added });
       Alert.alert(grant.added > 0 ? `+${grant.added} Energy` : 'Energy full', `Energy ${grant.energyAfter}/${maxEnergy}`);
-    });
-  }, [addEnergy, adsRemoved, energy, maxEnergy, rewardedAdLoaded, rewardedAdStatus, showAd]);
+    }, { source, reward_amount: getEnergyAdReward(energy, maxEnergy), reward_type: 'energy' });
+  }, [addEnergy, adsRemoved, energy, maxEnergy, energyAdReady, adStatuses.energy, showAd]);
 
   const startLevel = useCallback((levelIndex: number, initialLives?: number, runId?: number, resumeState?: GameState) => {
     if (startLockedRef.current) return false;
@@ -235,10 +265,10 @@ function BobaPop() {
         const message = minutes > 0
           ? `Next energy in ${minutes} minute${minutes === 1 ? '' : 's'}.`
           : 'Energy will be ready soon.';
-        const buttons = !adsRemoved && rewardedAdLoaded
+        const buttons = !adsRemoved && energyAdReady
           ? [
               { text: 'Not now', style: 'cancel' as const },
-              { text: `Watch Ad · +${ENERGY_AD_REWARD} Energy`, onPress: () => handleWatchEnergyAd() },
+              { text: `Watch Ad · +${ENERGY_AD_REWARD} Energy`, onPress: () => handleWatchEnergyAd('out_of_energy') },
             ]
           : [{ text: 'OK' }];
         Alert.alert('Out of energy', message, buttons);
@@ -252,7 +282,7 @@ function BobaPop() {
     navigateTo({ name: 'game', levelIndex, runId: resolvedRunId, initialLives, resumeState });
     releaseStartLock();
     return true;
-  }, [adsRemoved, handleWatchEnergyAd, isLevelUnlocked, navigateTo, nextEnergyInMs, rewardedAdLoaded, spendEnergy]);
+  }, [adsRemoved, handleWatchEnergyAd, isLevelUnlocked, navigateTo, nextEnergyInMs, energyAdReady, spendEnergy]);
 
   const handleSelectLevel = useCallback((index: number) => {
     if (index < 0 || index >= LEVELS.length || !isLevelUnlocked(index)) return;
@@ -314,7 +344,7 @@ function BobaPop() {
     const continuesUsed = runContinues[runId] ?? 0;
     const offer = getContinueOffer(levelIndex, continuesUsed, adsRemoved);
     if (!offer.canShow) return;
-    if (continuePendingRef.current) return;
+    if (continuePendingRef.current || adBusy || (!adsRemoved && !continueAdReady)) return;
 
     continuePendingRef.current = true;
     trackContinueAccepted(levelIndex, offer.continueNumber, offer.rewardLives);
@@ -322,20 +352,50 @@ function BobaPop() {
     if (offer.reason === 'ads_removed') {
       if (startLevel(levelIndex, offer.rewardLives, runId, screen.failedState)) {
         setRunContinues((prev) => ({ ...prev, [runId]: continuesUsed + 1 }));
+        trackAdEvent('ad_reward_granted', 'continue', { source: 'over', level_number: levelIndex + 1,
+          reward_type: 'lives', reward_amount: offer.rewardLives, plus_active: true });
       }
       continuePendingRef.current = false;
       return;
     }
 
-    showAd((result) => {
+    let settled = false;
+    showAd('continue', (result) => {
+      if (settled) return;
+      settled = true;
       trackRewardedAdResult(levelIndex, offer.continueNumber, result);
       continuePendingRef.current = false;
       if (result !== 'watched') return;
       if (startLevel(levelIndex, offer.rewardLives, runId, screen.failedState)) {
         setRunContinues((prev) => ({ ...prev, [runId]: continuesUsed + 1 }));
+        trackAdEvent('ad_reward_granted', 'continue', { source: 'over', level_number: levelIndex + 1,
+          reward_type: 'lives', reward_amount: offer.rewardLives, plus_active: false });
       }
-    });
-  }, [adsRemoved, runContinues, screen, showAd, startLevel]);
+    }, { source: 'over', level_number: levelIndex + 1, continue_number: offer.continueNumber,
+      reward_amount: offer.rewardLives, reward_type: 'lives' });
+  }, [adBusy, adsRemoved, continueAdReady, runContinues, screen, showAd, startLevel]);
+
+  const handleClearBonus = useCallback(() => {
+    if (screen.name !== 'complete' || !screen.bonusClaimId || bonusAdPendingRef.current || adBusy) return;
+    const claimId = screen.bonusClaimId;
+    bonusAdPendingRef.current = true;
+    let settled = false;
+    const grant = (result: RewardedAdResult) => {
+      if (settled) return;
+      settled = true;
+      bonusAdPendingRef.current = false;
+      if (result !== 'watched') return;
+      const reward = claimClearBonus(claimId);
+      trackAdEvent('ad_reward_granted', 'clear_bonus', { source: 'complete', level_number: screen.levelIndex + 1,
+        reward_type: 'bobas', reward_amount: reward.added, plus_active: adsRemoved });
+      setScreen((prev) => prev.name === 'complete' && prev.bonusClaimId === claimId
+        ? { ...prev, bonusClaimId: null, badgeUnlocks: [...prev.badgeUnlocks, ...reward.badgeUnlocks] } : prev);
+      if (reward.added > 0) Alert.alert(`+${reward.added} Bonus Bobas`, 'Your Bobas from this clear have doubled.');
+    };
+    if (adsRemoved) grant('watched');
+    else showAd('clear_bonus', grant, { source: 'complete', level_number: screen.levelIndex + 1,
+      reward_type: 'bobas', reward_amount: screen.bobasEarned });
+  }, [adBusy, adsRemoved, claimClearBonus, screen, showAd]);
 
   const handleRetryFromGameOver = useCallback(() => {
     if (screen.name !== 'over') return;
@@ -394,10 +454,10 @@ function BobaPop() {
           energy={energy}
           maxEnergy={maxEnergy}
           nextEnergyInMs={nextEnergyInMs}
-          energyAdReady={!adsRemoved && rewardedAdLoaded}
-          energyAdLoading={!adsRemoved && rewardedAdStatus === 'loading'}
+          energyAdReady={!adsRemoved && energyAdReady}
+          energyAdLoading={!adsRemoved && adStatuses.energy === 'loading'}
           onSelectLevel={handleSelectLevel}
-          onWatchEnergyAd={handleWatchEnergyAd}
+          onWatchEnergyAd={() => handleWatchEnergyAd(screen.name)}
           onUpdateSettings={updateSettings}
           privacyOptionsRequired={privacyOptionsRequired}
           onOpenPrivacy={openPrivacyOptions}
@@ -440,6 +500,15 @@ function BobaPop() {
           firstClear={screen.firstClear}
           badgeUnlocks={screen.badgeUnlocks}
           energyRefund={screen.energyRefund}
+          bobasEarned={screen.bobasEarned}
+          bonusAvailable={!!screen.bonusClaimId}
+          bonusAdStatus={adStatuses.clear_bonus}
+          onClaimBonus={handleClearBonus}
+          energy={energy}
+          maxEnergy={maxEnergy}
+          energyAdReady={energyAdReady}
+          energyAdLoading={adStatuses.energy === 'loading'}
+          onWatchEnergyAd={() => handleWatchEnergyAd('complete')}
           unlimitedEnergy={adsRemoved}
           stars={stars}
           levelNumber={levelIndex + 1}
@@ -468,13 +537,15 @@ function BobaPop() {
           theme={worldTheme}
           adsRemoved={adsRemoved}
           continueOffer={continueOffer}
-          adAvailable={adsRemoved || rewardedAdLoaded}
-          adUnavailable={!adsRemoved && rewardedAdStatus === 'unavailable'}
+          adAvailable={adsRemoved || continueAdReady}
+          adUnavailable={!adsRemoved && adStatuses.continue === 'unavailable'}
+          energyAdReady={energyAdReady}
+          energyAdLoading={adStatuses.energy === 'loading'}
           energy={energy}
           maxEnergy={maxEnergy}
           nextEnergyInMs={nextEnergyInMs}
           onContinue={handleContinue}
-          onWatchEnergyAd={handleWatchEnergyAd}
+          onWatchEnergyAd={() => handleWatchEnergyAd(screen.name)}
           onRetry={handleRetryFromGameOver}
           onMenu={handleLevelSelectFromGameOver}
           onOpenPlus={() => setPlusPaywallVisible(true)}
@@ -485,7 +556,7 @@ function BobaPop() {
 
   return (
     <>
-      <Animated.View style={[styles.fullScreen, { opacity: screenOpacity }]}>
+      <Animated.View pointerEvents={adBusy ? 'none' : 'auto'} accessibilityElementsHidden={adBusy} style={[styles.fullScreen, { opacity: screenOpacity }]}>
         {screenContent}
       </Animated.View>
 

@@ -14,6 +14,9 @@ import { useReducedMotion } from '../hooks/useReducedMotion';
 import { LinearGradient } from 'expo-linear-gradient';
 import { WorldTheme } from '../constants/themes';
 import { IMAGES } from '../assets/images';
+import { RewardedOfferButton } from '../components/RewardedOfferButton';
+import { getEnergyAdReward } from '../monetization/economy';
+import type { RewardedAdStatus } from '../hooks/useRewardedAd';
 
 interface Props {
   score: number;
@@ -21,6 +24,15 @@ interface Props {
   badgeUnlocks: string[];
   energyRefund: number;
   unlimitedEnergy: boolean;
+  bobasEarned: number;
+  bonusAvailable: boolean;
+  bonusAdStatus: RewardedAdStatus;
+  onClaimBonus: () => void;
+  energy: number;
+  maxEnergy: number;
+  energyAdReady: boolean;
+  energyAdLoading: boolean;
+  onWatchEnergyAd: () => void;
   stars: number;
   levelNumber: number;
   theme: WorldTheme;
@@ -40,6 +52,15 @@ export const LevelCompleteScreen: React.FC<Props> = ({
   badgeUnlocks,
   energyRefund,
   unlimitedEnergy,
+  bobasEarned,
+  bonusAvailable,
+  bonusAdStatus,
+  onClaimBonus,
+  energy,
+  maxEnergy,
+  energyAdReady,
+  energyAdLoading,
+  onWatchEnergyAd,
   stars,
   levelNumber,
   theme,
@@ -153,6 +174,7 @@ export const LevelCompleteScreen: React.FC<Props> = ({
         </View>}
         {badgeUnlocks.map((name) => <Text key={name} style={styles.clearRewardText} accessibilityLiveRegion="polite">{name} badge unlocked! Equip it in your profile.</Text>)}
         <Text style={styles.rewardHint}>Stars advance your rank. Bobas from this clear unlock badge styles.</Text>
+        <Text style={styles.clearRewardText}>{`+${bobasEarned} Bobas earned`}</Text>
 
         <View style={styles.buttons}>
           {!isLast && (
@@ -164,6 +186,18 @@ export const LevelCompleteScreen: React.FC<Props> = ({
                 {isChapterComplete ? 'Next Chapter →' : isWorldBoss ? 'Next World →' : 'Next Level →'}
               </Text>
             </TouchableOpacity>
+          )}
+          {bonusAvailable && (
+            <RewardedOfferButton
+              title={unlimitedEnergy ? `Claim · +${bobasEarned} Bonus Bobas` : `Watch Ad · +${bobasEarned} Bonus Bobas`}
+              detail={unlimitedEnergy ? 'Double your clear Bobas · Included with Plus' : 'Double your clear Bobas · Unlock badge styles sooner'}
+              ready={unlimitedEnergy || bonusAdStatus === 'ready'} loading={!unlimitedEnergy && bonusAdStatus === 'loading'}
+              onPress={onClaimBonus} />
+          )}
+          {!unlimitedEnergy && energy < maxEnergy && (
+            <RewardedOfferButton title={`Watch Ad · +${getEnergyAdReward(energy, maxEnergy)} Energy`}
+              detail={`Energy ${energy}/${maxEnergy} · Stock up for your next run`}
+              ready={energyAdReady} loading={energyAdLoading} onPress={onWatchEnergyAd} />
           )}
           <TouchableOpacity accessibilityRole="button"
             style={[styles.btn, { borderColor: theme.accentColor, borderWidth: 1.5 }]}

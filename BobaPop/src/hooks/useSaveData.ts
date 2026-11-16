@@ -39,6 +39,7 @@ interface UseSaveDataReturn {
   spendEnergy: () => boolean;
   addEnergy: (amount?: number) => EnergyGrant;
   recordLevelComplete: (levelIndex: number, stars: number, score: number, bricksPopped: number) => CompletionReward;
+  claimClearBonus: (claimId: string) => { added: number; badgeUnlocks: string[] };
   markWorldSeen: (worldIndex: number) => void;
   markOnboardingSeen: (key: string) => void;
   updateSettings: (sound: boolean, haptics: boolean) => void;
@@ -99,7 +100,9 @@ export function useSaveData(devUnlockAll: boolean, levelIds: string[]): UseSaveD
   const recordLevelComplete = useCallback((levelIndex: number, stars: number, score: number, bricksPopped: number) => {
     const prev = resolveEnergy(saveRef.current);
     const levelId = levelIds[levelIndex];
-    if (!hydratedRef.current || !levelId) return { firstClear: false, energyRefund: 0, badgeUnlocks: [] };
+    if (!hydratedRef.current || !levelId) return { firstClear: false, energyRefund: 0, badgeUnlocks: [], bobasEarned: 0, bonusClaimId: null };
+    const bobasEarned = Number.isFinite(bricksPopped) ? Math.max(0, Math.min(1000, Math.floor(bricksPopped))) : 0;
+    const bonusClaimId = levelIndex >= 3 && bobasEarned > 0 ? `${Date.now()}_${Math.random().toString(36).slice(2, 10)}` : null;
     const firstClear = (prev.levelStarsById[levelId] ?? 0) === 0;
     const energyRefund = firstClear && !hasUnlimitedEnergy(prev)
       ? Math.min(FIRST_CLEAR_ENERGY_REFUND, MAX_ENERGY - prev.energyLives) : 0;
@@ -107,7 +110,7 @@ export function useSaveData(devUnlockAll: boolean, levelIds: string[]): UseSaveD
     const previousStars = levelIds.reduce((total, id) => total + (prev.levelStarsById[id] ?? 0), 0);
     const nextStars = previousStars + Math.max(0, stars - (prev.levelStarsById[levelId] ?? 0));
     const badgeUnlocks = BADGE_STYLES.filter((badge) => !isBadgeUnlocked(badge, previousStars, prev.totalBobas)
-      && isBadgeUnlocked(badge, nextStars, prev.totalBobas + bricksPopped)).map((badge) => badge.name);
+      && isBadgeUnlocked(badge, nextStars, prev.totalBobas + bobasEarned)).map((badge) => badge.name);
     const nextLevelId = levelIds[levelIndex + 1];
     const unlockedLevelIds = new Set(prev.unlockedLevelIds);
     unlockedLevelIds.add(levelId);
@@ -134,9 +137,23 @@ export function useSaveData(devUnlockAll: boolean, levelIds: string[]): UseSaveD
         ...prev.levelHighScoresById,
         [levelId]: Math.max(prev.levelHighScoresById[levelId] ?? 0, score),
       },
-      totalBobas: prev.totalBobas + bricksPopped,
+      totalBobas: prev.totalBobas + bobasEarned,
+      pendingClearBonus: bonusClaimId ? { id: bonusClaimId, bobas: bobasEarned } : null,
     });
-    return { firstClear, energyRefund, badgeUnlocks };
+    return { firstClear, energyRefund, badgeUnlocks, bobasEarned, bonusClaimId };
+  }, [levelIds, persist]);
+
+  const claimClearBonus = useCallback((claimId: string) => {
+    const prev = saveRef.current;
+    const bonus = prev.pendingClearBonus;
+    if (!hydratedRef.current || !bonus || bonus.id !== claimId) return { added: 0, badgeUnlocks: [] };
+    const totalBobas = prev.totalBobas + bonus.bobas;
+    const stars = levelIds.reduce((total, id) => total + (prev.levelStarsById[id] ?? 0), 0);
+    const badgeUnlocks = BADGE_STYLES.filter((badge) => !isBadgeUnlocked(badge, stars, prev.totalBobas)
+      && isBadgeUnlocked(badge, stars, totalBobas)).map((badge) => badge.name);
+    // persist updates saveRef synchronously, so duplicate SDK callbacks cannot claim twice.
+    persist({ ...prev, totalBobas, pendingClearBonus: null });
+    return { added: bonus.bobas, badgeUnlocks };
   }, [levelIds, persist]);
 
   const selectBadge = useCallback((id: BadgeStyleId) => {
@@ -240,5 +257,5 @@ export function useSaveData(devUnlockAll: boolean, levelIds: string[]): UseSaveD
     ? 0
     : Math.max(0, ENERGY_REFILL_MS - (energyNow - resolvedSave.energyUpdatedAt));
 
-  return { loading, ready: hydratedRef.current, saveError, retrySave, unlockedUpTo, unlockedLevelIds: save.unlockedLevelIds, levelStars, levelHighScores, totalBobas: save.totalBobas, selectedBadgeId: save.selectedBadgeId, selectBadge, seenWorlds: save.seenWorlds, soundEnabled: save.soundEnabled, hapticsEnabled: save.hapticsEnabled, adsRemoved: hasUnlimitedEnergy(save, Math.max(energyNow, Date.now())), seenOnboarding: save.seenOnboarding, energy: resolvedSave.energyLives, maxEnergy: MAX_ENERGY, nextEnergyInMs, recordLevelComplete, markWorldSeen, markOnboardingSeen, updateSettings, setAdsRemovedEntitlement, isLevelUnlocked, spendEnergy, addEnergy };
+  return { loading, ready: hydratedRef.current, saveError, retrySave, unlockedUpTo, unlockedLevelIds: save.unlockedLevelIds, levelStars, levelHighScores, totalBobas: save.totalBobas, selectedBadgeId: save.selectedBadgeId, selectBadge, seenWorlds: save.seenWorlds, soundEnabled: save.soundEnabled, hapticsEnabled: save.hapticsEnabled, adsRemoved: hasUnlimitedEnergy(save, Math.max(energyNow, Date.now())), seenOnboarding: save.seenOnboarding, energy: resolvedSave.energyLives, maxEnergy: MAX_ENERGY, nextEnergyInMs, recordLevelComplete, claimClearBonus, markWorldSeen, markOnboardingSeen, updateSettings, setAdsRemovedEntitlement, isLevelUnlocked, spendEnergy, addEnergy };
 }

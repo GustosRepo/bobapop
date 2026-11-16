@@ -1,6 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createAnalyticsQueue } from './analyticsQueue';
 import { PowerUpType } from '../game/types';
+import { Platform } from 'react-native';
+import { REWARD_POLICY_ID } from '../monetization/economy';
+import type { AdContext, AdPlacement } from '../monetization/adPlacements';
 
 type AnalyticsParams = Record<string, string | number | boolean | null | undefined>;
 
@@ -10,6 +13,7 @@ export interface AnalyticsEvent {
   params: AnalyticsParams;
   createdAt: string;
   sessionId: string;
+  installationId?: string;
 }
 
 type AnalyticsTransport = (event: AnalyticsEvent) => Promise<void> | void;
@@ -24,10 +28,23 @@ const sessionCounters = {
 };
 
 let transport: AnalyticsTransport | null = null;
+let installationId: Promise<string> | null = null;
 const queue = createAnalyticsQueue<AnalyticsEvent>(AsyncStorage);
 
 export function configureAnalytics(nextTransport: AnalyticsTransport | null) {
-  transport = nextTransport;
+  transport = nextTransport ? async (event) => {
+    // Created only when analytics is configured. This identifier stays inside this
+    // installation; no advertising identifier or cross-app identity is collected.
+    installationId ??= (async () => {
+      const key = '@bobapop_analytics_installation_v1';
+      const existing = await AsyncStorage.getItem(key);
+      if (existing && /^[a-z0-9_]{8,100}$/i.test(existing)) return existing;
+      const id = `${Date.now()}_${Math.random().toString(36).slice(2, 14)}`;
+      await AsyncStorage.setItem(key, id);
+      return id;
+    })().catch((error) => { installationId = null; throw error; });
+    await nextTransport({ ...event, installationId: await installationId });
+  } : null;
 }
 
 export async function flushAnalyticsQueue() {
@@ -38,7 +55,7 @@ export function trackGameEvent(eventName: string, params: AnalyticsParams = {}) 
   const event: AnalyticsEvent = {
     id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     name: eventName,
-    params,
+    params: { ...params, platform: Platform.OS, reward_policy: REWARD_POLICY_ID },
     createdAt: new Date().toISOString(),
     sessionId,
   };
@@ -51,6 +68,10 @@ export function trackGameEvent(eventName: string, params: AnalyticsParams = {}) 
   queue.enqueue(event)
     .then(flushAnalyticsQueue)
     .catch(() => {});
+}
+
+export function trackAdEvent(name: string, placement: AdPlacement, context: AdContext = {}) {
+  trackGameEvent(name, { ...context, placement, ad_format: 'rewarded', ad_platform: 'admob' });
 }
 
 export function trackLevelStart(levelIndex: number, runId: number) {

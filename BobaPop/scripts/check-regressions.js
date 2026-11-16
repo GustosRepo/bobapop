@@ -123,12 +123,12 @@ test('early entitlement updates merge into hydrated progress', async () => {
   runner.cleanup();
 });
 
-async function economyFixture(overrides = {}) {
+async function economyFixture(overrides = {}, levelIds = ids) {
   const runner = hookRunner(); const app = nativeApp();
-  const storage = memory([[core.STORAGE_KEY, JSON.stringify({ ...core.buildDefaultSave(ids), ...overrides })]]);
+  const storage = memory([[core.STORAGE_KEY, JSON.stringify({ ...core.buildDefaultSave(levelIds), ...overrides })]]);
   const { useSaveData } = loader({ react: runner.react, 'react-native': { AppState: app },
     '@react-native-async-storage/async-storage': { default: storage } })('src/hooks/useSaveData.ts');
-  const current = () => runner.render(() => useSaveData(false, ids));
+  const current = () => runner.render(() => useSaveData(false, levelIds));
   current(); await tick();
   assert(current().ready);
   return { current, storage, cleanup: () => runner.cleanup() };
@@ -229,6 +229,75 @@ test('badge milestones unlock an equipable cosmetic and persist without spending
   const { getBadgeStyle } = load('src/game/badgeRewards.ts');
   assert.equal(getBadgeStyle('cosmic', 119, 99999).id, 'classic');
   assert.equal(getBadgeStyle('cosmic', 120, 0).id, 'cosmic');
+});
+
+test('clear bonuses persist, unlock cosmetics, and can only be claimed once', async () => {
+  const levels = ['one', 'two', 'three', 'four'];
+  const fixture = await economyFixture({ totalBobas: 75 }, levels);
+  let persisted;
+  try {
+    assert.equal(fixture.current().recordLevelComplete(0, 3, 100, 14).bonusClaimId, null);
+    const reward = fixture.current().recordLevelComplete(3, 3, 100, 10);
+    assert(reward.bonusClaimId); assert.equal(reward.bobasEarned, 10);
+    assert.equal(fixture.current().totalBobas, 99);
+    assert.equal(fixture.current().claimClearBonus('wrong').added, 0);
+    await tick(); persisted = JSON.parse(fixture.storage.db.get(core.STORAGE_KEY));
+    assert.equal(persisted.pendingClearBonus.id, reward.bonusClaimId);
+    const bonus = fixture.current().claimClearBonus(reward.bonusClaimId);
+    assert.equal(bonus.added, 10); assert.equal(bonus.badgeUnlocks.join(','), 'Caramel');
+    assert.equal(fixture.current().totalBobas, 109);
+    assert.equal(fixture.current().claimClearBonus(reward.bonusClaimId).added, 0);
+    await tick(); assert.equal(JSON.parse(fixture.storage.db.get(core.STORAGE_KEY)).pendingClearBonus, null);
+  } finally { fixture.cleanup(); }
+  const restored = await economyFixture(persisted, levels);
+  try {
+    assert.equal(restored.current().claimClearBonus(persisted.pendingClearBonus.id).added, 10);
+    assert.equal(restored.current().claimClearBonus(persisted.pendingClearBonus.id).added, 0);
+  } finally { restored.cleanup(); }
+});
+
+test('new completions invalidate older bonus claims and Plus bonuses cost no Energy', async () => {
+  const fixture = await economyFixture({ adsRemoved: true, energyLives: 0, energyUpdatedAt: Date.now() }, ['one', 'two', 'three', 'four']);
+  try {
+    const first = fixture.current().recordLevelComplete(3, 3, 100, 10);
+    const second = fixture.current().recordLevelComplete(3, 3, 100, 12);
+    assert.equal(fixture.current().claimClearBonus(first.bonusClaimId).added, 0);
+    assert.equal(fixture.current().claimClearBonus(second.bonusClaimId).added, 12);
+    assert.equal(fixture.current().energy, 0);
+  } finally { fixture.cleanup(); }
+  assert.equal(core.migrateSaveData({ version: 10, totalBobas: 321 }, ids).pendingClearBonus, null);
+  assert.equal(core.migrateSaveData({ version: core.CURRENT_VERSION, pendingClearBonus: { id: 'bad', bobas: -1 } }, ids).pendingClearBonus, null);
+});
+
+test('reward tuning has bounded defaults and Energy offers disclose the capped amount', () => {
+  const economy = (env) => loader({}, { process: { env } })('src/monetization/economy.ts');
+  const standard = economy({}); assert.equal(standard.getEnergyAdReward(4, 5), 1); assert.equal(standard.getEnergyAdReward(5, 5), 0);
+  assert.equal(economy({ EXPO_PUBLIC_ENERGY_AD_REWARD: '3' }).ENERGY_AD_REWARD, 3);
+  for (const value of ['0', '-1', '4', 'NaN', '1.5']) assert.equal(economy({ EXPO_PUBLIC_CONTINUE_AD_LIVES: value }).CONTINUE_LIVES, 2);
+});
+
+test('placement IDs use specific live values, fallback safely, and reject placeholders', () => {
+  const fallback = 'ca-app-pub-1234567890123456/1111111111'; const specific = 'ca-app-pub-1234567890123456/2222222222';
+  const resolve = (env, os = 'ios', dev = false) => loader({ 'react-native': { Platform: { OS: os } } },
+    { __DEV__: dev, process: { env } })('src/monetization/adPlacements.ts').resolveRewardedUnitId;
+  const values = { EXPO_PUBLIC_ADMOB_REWARDED_IOS_UNIT_ID: fallback, EXPO_PUBLIC_ADMOB_ENERGY_IOS_UNIT_ID: specific };
+  assert.equal(resolve(values)('energy', 'test'), specific); assert.equal(resolve(values)('continue', 'test'), fallback);
+  assert.equal(resolve(values)('clear_bonus', 'test'), fallback); assert.equal(resolve(values, 'android')('energy', 'test'), null);
+  assert.equal(resolve({ EXPO_PUBLIC_ADMOB_REWARDED_IOS_UNIT_ID: 'ca-app-pub-0000000000000000/0000000000' })('energy', 'test'), null);
+  assert.equal(resolve(values, 'ios', true)('energy', 'test'), 'test');
+});
+
+test('analytics stays disabled without transport and sends a stable installation ID when enabled', async () => {
+  const storage = memory(); const events = [];
+  const analytics = loader({ 'react-native': { Platform: { OS: 'ios' } }, '@react-native-async-storage/async-storage': { default: storage } })('src/analytics/gameAnalytics.ts');
+  analytics.trackGameEvent('disabled'); await tick(); assert.equal(storage.db.size, 0);
+  analytics.configureAnalytics(event => { events.push(event); });
+  analytics.trackGameEvent('session_start'); analytics.trackAdEvent('ad_revenue', 'energy', { value: 0.005, currency: 'USD' });
+  await tick(); await analytics.flushAnalyticsQueue();
+  assert.equal(events.length, 2); assert(events[0].installationId);
+  assert.equal(events[0].installationId, events[1].installationId);
+  assert.equal(events[1].params.placement, 'energy'); assert.equal(events[1].params.platform, 'ios');
+  assert(events[1].params.reward_policy.includes('energy_2_lives_2'));
 });
 
 test('analytics preserves simultaneous events and arrivals during upload', async () => {
@@ -400,7 +469,7 @@ test('reward screens disclose exact rewards and enable Plus retries at zero Ener
   const theme = { accentColor: '#A86C38', ballColor: '#FFF', background: ['#222','#333','#222'], paddleColor: '#A86C38' };
   const retry = () => {}; const watch = () => {}; let renderer;
   const props = { score: 100, levelNumber: 6, theme, adsRemoved: true,
-    continueOffer: getContinueOffer(5, 0, true), adAvailable: true, adUnavailable: false,
+    continueOffer: getContinueOffer(5, 0, true), adAvailable: true, adUnavailable: false, energyAdReady: true, energyAdLoading: false,
     energy: 0, maxEnergy: 5, nextEnergyInMs: 10000, onContinue() {}, onWatchEnergyAd: watch, onRetry: retry, onMenu() {}, onOpenPlus() {} };
   await act(async () => { renderer = create(React.createElement(GameOverScreen, props)); });
   assert.equal(renderer.root.findByType('ScrollView').props.contentContainerStyle[1].paddingRight, 88);
@@ -410,9 +479,13 @@ test('reward screens disclose exact rewards and enable Plus retries at zero Ener
   const text = JSON.stringify(renderer.toJSON());
   assert(text.includes('Watch Ad · +2 Lives')); assert(text.includes('Watch Ad · +2 Energy'));
   assert(!text.includes('Available in'));
+  await act(async () => renderer.update(React.createElement(GameOverScreen, { ...props, adsRemoved: false, energy: 4,
+    adAvailable: false, adUnavailable: true, continueOffer: getContinueOffer(5, 0, false) })));
+  assert(JSON.stringify(renderer.toJSON()).includes('Watch Ad · +1 Energy'));
   await act(async () => renderer.update(React.createElement(LevelCompleteScreen, { score: 100, stars: 3, levelNumber: 1, theme,
     firstClear: true, energyRefund: 1, unlimitedEnergy: false, badgeUnlocks: ['Caramel'], isLast: false,
-    isWorldBoss: false, chapter: 1, isChapterComplete: false, onNext() {}, onReplay() {}, onMenu() {} })));
+    isWorldBoss: false, chapter: 1, isChapterComplete: false, bobasEarned: 14, bonusAvailable: false, bonusAdStatus: 'ready',
+    onClaimBonus() {}, energy: 5, maxEnergy: 5, energyAdReady: true, energyAdLoading: false, onWatchEnergyAd() {}, onNext() {}, onReplay() {}, onMenu() {} })));
   const completed = JSON.stringify(renderer.toJSON());
   assert(completed.includes('First clear! +1 Energy returned'));
   assert(completed.includes('Caramel'));
@@ -428,44 +501,134 @@ test('production config rejects absent IDs, placeholders, and release test ads',
     EXPO_PUBLIC_ADMOB_REWARDED_IOS_UNIT_ID: 'ca-app-pub-1234567890123456/1234567890',
   };
   assert.equal(config(values).expo.name, 'BobaPop');
+  const plugin = config(values).expo.plugins.find(entry => Array.isArray(entry) && entry[0] === 'react-native-google-mobile-ads')[1];
+  assert(plugin.userTrackingUsageDescription); assert(plugin.skAdNetworkItems.includes('cstr6suwn9.skadnetwork'));
+  const separate = { ...values, EXPO_PUBLIC_ADMOB_REWARDED_IOS_UNIT_ID: undefined,
+    EXPO_PUBLIC_ADMOB_CONTINUE_IOS_UNIT_ID: values.EXPO_PUBLIC_ADMOB_REWARDED_IOS_UNIT_ID,
+    EXPO_PUBLIC_ADMOB_ENERGY_IOS_UNIT_ID: 'ca-app-pub-1234567890123456/2222222222',
+    EXPO_PUBLIC_ADMOB_CLEAR_BONUS_IOS_UNIT_ID: 'ca-app-pub-1234567890123456/3333333333' };
+  assert.equal(config(separate).expo.name, 'BobaPop');
+  assert.throws(() => config({ ...separate, EXPO_PUBLIC_ADMOB_ENERGY_IOS_UNIT_ID: 'ca-app-pub-9999999999999999/2222222222' }), /publisher mismatch/);
+  assert.throws(() => config({ ...values, EXPO_PUBLIC_ENERGY_AD_REWARD: '4' }), /must be 1, 2, or 3/);
   assert.throws(() => config({ ...values, EXPO_PUBLIC_ALLOW_TEST_ADS_IN_RELEASE: 'true' }), /disable release test ads/);
   assert.throws(() => config({ ...values, EXPO_PUBLIC_ADMOB_REWARDED_IOS_UNIT_ID: 'ca-app-pub-0000000000000000/0000000000' }), /Missing live/);
   assert.throws(() => config({ ...values, EAS_BUILD_PLATFORM: undefined }), /Missing/);
 });
 
-function adHarness(canRequestAds = true) {
-  const runner = hookRunner(); const app = nativeApp(); let listener; let loads = 0;
-  const ad = { addAdEventsListener(fn) { listener = fn; return () => {}; }, load() { loads++; listener({ type: 'loaded' }); }, show: async () => {} };
-  const sdk = { TestIds: { REWARDED: 'test' }, AdsConsent: { gatherConsent: async () => ({ canRequestAds, privacyOptionsRequirementStatus: 'REQUIRED' }),
-    getConsentInfo: async () => ({ canRequestAds, privacyOptionsRequirementStatus: 'REQUIRED' }) },
-    AdsConsentPrivacyOptionsRequirementStatus: { REQUIRED: 'REQUIRED' }, default: () => ({ initialize: async () => {} }),
-    RewardedAd: { createForAdRequest: () => ad }, RewardedAdEventType: { LOADED: 'loaded', EARNED_REWARD: 'earned' }, AdEventType: { CLOSED: 'closed', ERROR: 'error' } };
-  const { useRewardedAd } = loader({ react: runner.react, 'react-native': { AppState: app, Platform: { OS: 'ios' }, Alert: { alert() {} } },
-    '../monetization/adsSdk': { getAdsSdk: () => sdk } }, { __DEV__: true })('src/hooks/useRewardedAd.ts');
-  return { runner, ad, render: () => runner.render(() => useRewardedAd()), emit: (type) => listener({ type }), loads: () => loads };
+function adHarness(canRequestAds = true, options = {}) {
+  const runner = hookRunner(); const app = nativeApp(); const ads = []; const events = []; const timers = new Map();
+  let now = 1000; let nextTimer = 0; let loads = 0; let consentCalls = 0; let consentError = false;
+  const sdk = { TestIds: { REWARDED: 'test' }, AdsConsent: {
+    gatherConsent: async () => { consentCalls++; if (consentError) throw new Error('network'); return { canRequestAds, privacyOptionsRequirementStatus: 'REQUIRED' }; },
+    getConsentInfo: async () => { if (consentError) throw new Error('network'); return { canRequestAds, privacyOptionsRequirementStatus: 'REQUIRED' }; },
+    showPrivacyOptionsForm: async () => ({ privacyOptionsRequirementStatus: 'REQUIRED' }) },
+    AdsConsentPrivacyOptionsRequirementStatus: { REQUIRED: 'REQUIRED' }, default: () => ({ initialize: async () => [] }),
+    RewardedAd: { createForAdRequest: (unit, requestOptions) => {
+      const ad = { unit, requestOptions, listener: null, addAdEventsListener(fn) { this.listener = fn; return () => { this.listener = null; }; },
+        load() { loads++; if (!options.stall) this.emit('loaded'); }, show: async () => {}, emit(type, payload) { this.listener?.({ type, payload }); } };
+      ads.push(ad); return ad;
+    } }, RewardedAdEventType: { LOADED: 'loaded', EARNED_REWARD: 'earned' }, AdEventType: { CLOSED: 'closed', ERROR: 'error', OPENED: 'opened', PAID: 'paid' } };
+  const RealDate = Date;
+  const { useRewardedAd, AD_MAX_AGE_MS } = loader({ react: runner.react, 'react-native': { AppState: app, Platform: { OS: 'ios' }, Alert: { alert() {} } },
+    '../analytics/gameAnalytics': { trackAdEvent: (...args) => events.push(args), trackGameEvent() {} },
+    '../monetization/adsSdk': { getAdsSdk: () => sdk } }, { __DEV__: true,
+    Date: class extends RealDate { static now() { return now; } },
+    setTimeout(fn, delay) { const id = ++nextTimer; timers.set(id, { fn, at: now + delay }); return id; },
+    clearTimeout(id) { timers.delete(id); },
+  })('src/hooks/useRewardedAd.ts');
+  const advance = (ms) => {
+    const end = now + ms;
+    for (;;) {
+      const due = [...timers].filter(([, timer]) => timer.at <= end).sort((a, b) => a[1].at - b[1].at)[0];
+      if (!due) break;
+      timers.delete(due[0]); now = due[1].at; due[1].fn();
+    }
+    now = end;
+  };
+  return { runner, app, ads, events, advance, AD_MAX_AGE_MS,
+    render: (enabled = true) => runner.render(() => useRewardedAd(enabled)), loads: () => loads,
+    consentCalls: () => consentCalls, setConsentError: value => { consentError = value; } };
 }
 
-test('ads never load without consent permission', async () => {
+test('ads never load without consent permission and initialize consent once for all placements', async () => {
   const h = adHarness(false); h.render(); await tick();
-  assert.equal(h.loads(), 0); assert.equal(h.render().status, 'unavailable'); h.runner.cleanup();
+  assert.equal(h.loads(), 0); assert.equal(h.render().statuses.continue, 'unavailable'); h.runner.cleanup();
+  const allowed = adHarness(); allowed.render(); await tick();
+  assert.equal(allowed.loads(), 3); assert.equal(allowed.consentCalls(), 1);
+  assert(allowed.ads.every(ad => ad.requestOptions === undefined)); allowed.runner.cleanup();
 });
 
 test('ad presentation rejection settles immediately and rewards wait for close', async () => {
   const h = adHarness(); h.render(); await tick();
-  let result; h.ad.show = async () => { throw new Error('presentation'); };
-  h.render().showAd((value) => { result = value; }); await tick(); assert.equal(result, 'error');
-  h.render(); await tick(); h.ad.show = async () => {}; result = undefined;
-  h.render().showAd((value) => { result = value; }); h.emit('earned'); assert.equal(result, undefined);
-  h.emit('closed'); assert.equal(result, 'watched'); h.runner.cleanup();
+  let result; h.ads[0].show = async () => { throw new Error('presentation'); };
+  h.render().showAd('continue', value => { result = value; }); await tick(); assert.equal(result, 'error');
+  result = undefined; const current = h.ads.at(-1);
+  h.render().showAd('continue', value => { result = value; }); current.emit('earned'); assert.equal(result, undefined);
+  current.emit('closed'); assert.equal(result, 'watched'); assert.equal(h.render().busy, false); h.runner.cleanup();
 });
 
-test('closing an ad without a reward settles once and never grants a late reward', async () => {
+test('mediation reward after close is accepted once and old callbacks cannot reward another ad', async () => {
   const h = adHarness(); h.render(); await tick();
-  const results = [];
-  h.render().showAd((value) => results.push(value));
-  h.emit('closed'); h.emit('earned'); h.emit('closed');
-  assert.equal(results.join(','), 'closed');
-  h.runner.cleanup();
+  const results = []; const first = h.ads[0];
+  h.render().showAd('continue', value => results.push(value));
+  first.emit('closed'); first.emit('closed'); h.advance(500); first.emit('earned');
+  assert.equal(results.join(','), 'watched');
+  h.render().showAd('energy', value => results.push(value));
+  h.advance(1000); first.emit('earned'); first.emit('closed');
+  assert.equal(results.join(','), 'watched');
+  h.ads[1].emit('closed'); h.advance(1000);
+  assert.equal(results.join(','), 'watched,closed'); h.runner.cleanup();
+});
+
+test('load timeout replaces the stalled request and ignores late events', async () => {
+  const h = adHarness(true, { stall: true }); h.render(); await tick(); const old = h.ads[0];
+  h.advance(15000); assert.equal(h.render().statuses.continue, 'unavailable');
+  h.advance(1000); assert.equal(h.loads(), 6);
+  old.emit('loaded'); assert.equal(h.render().statuses.continue, 'loading');
+  h.ads[3].emit('loaded'); assert.equal(h.render().statuses.continue, 'ready');
+  assert(h.events.some(e => e[0] === 'ad_load_failed' && e[2].error_code === 'load_timeout')); h.runner.cleanup();
+});
+
+test('cached ads refresh before expiry and foreground does not refresh a fresh ad', async () => {
+  const h = adHarness(); h.render(); await tick();
+  h.app.change('background'); h.app.change('active'); assert.equal(h.loads(), 3);
+  h.advance(h.AD_MAX_AGE_MS); assert.equal(h.loads(), 6);
+  h.app.change('background'); h.advance(h.AD_MAX_AGE_MS); assert.equal(h.loads(), 6);
+  h.app.change('active'); assert.equal(h.loads(), 9); h.runner.cleanup();
+});
+
+test('paid events preserve currency, precision, placement and context without duplicate revenue', async () => {
+  const h = adHarness(); h.render(); await tick();
+  h.render().showAd('energy', () => {}, { source: 'over', reward_amount: 2 });
+  const paid = { value: 0.005, currency: 'USD', precision: 1 };
+  h.ads[1].emit('paid', paid); h.ads[1].emit('paid', paid);
+  const revenue = h.events.filter(e => e[0] === 'ad_revenue');
+  assert.equal(revenue.length, 1); assert.equal(revenue[0][1], 'energy');
+  assert.equal(revenue[0][2].value, 0.005); assert.equal(revenue[0][2].currency, 'USD');
+  assert.equal(revenue[0][2].precision, 1); assert.equal(revenue[0][2].source, 'over'); h.runner.cleanup();
+});
+
+test('long visible ads keep their reward callback and lock until native close', async () => {
+  const h = adHarness(); h.render(); await tick(); const results = [];
+  h.render().showAd('energy', value => results.push(value)); h.ads[1].emit('opened');
+  h.render().showAd('continue', value => results.push(value)); assert.equal(results.join(','), 'not_available');
+  h.advance(120000); assert.equal(results.join(','), 'not_available'); assert(h.render().busy);
+  h.ads[1].emit('earned'); h.ads[1].emit('closed'); assert.equal(h.render().busy, false);
+  assert.equal(results.join(','), 'not_available,watched'); h.runner.cleanup();
+});
+
+test('a hung show request without presentation recovers and settles once', async () => {
+  const h = adHarness(); h.render(); await tick(); const results = []; const old = h.ads[1];
+  h.render().showAd('energy', value => results.push(value));
+  h.advance(120000); assert.equal(results.join(','), 'timeout'); assert.equal(h.render().busy, false);
+  assert.equal(h.render().statuses.energy, 'ready'); old.emit('earned'); old.emit('closed');
+  assert.equal(results.join(','), 'timeout'); h.runner.cleanup();
+});
+
+test('consent startup failures retry and disabling ads removes pending timers', async () => {
+  const h = adHarness(); h.setConsentError(true); h.render(); await tick(); assert.equal(h.loads(), 0);
+  h.setConsentError(false); h.advance(1000); await tick(); assert.equal(h.loads(), 3);
+  h.render(false); h.advance(h.AD_MAX_AGE_MS * 2); assert.equal(h.loads(), 3); h.runner.cleanup();
 });
 
 test('store outages preserve entitlement and foreground refresh handles expiration', async () => {
@@ -483,12 +646,12 @@ test('App guards duplicate wins and preserves board and Energy across capped rew
   const React = require('react');
   const { create, act } = require('react-test-renderer');
   global.IS_REACT_ACT_ENVIRONMENT = true;
-  const locks = []; let energy = 5; let mounts = 0; let completionCalls = 0; let adCalls = 0; let pendingAd;
+  const locks = []; let energy = 5; let mounts = 0; let completionCalls = 0; let bonusClaims = 0; let adCalls = 0; let pendingAd;
   const app = nativeApp();
   const noop = () => {};
   const asyncNoop = async () => {};
   const screen = (name) => ({ [name]: (props) => React.createElement(name, props) });
-  const analytics = Object.fromEntries(['trackContinueAccepted', 'trackContinueOffer', 'configureAnalytics',
+  const analytics = Object.fromEntries(['trackAdEvent', 'trackContinueAccepted', 'trackContinueOffer', 'configureAnalytics',
     'trackEnergyAdResult', 'trackGameOverExit', 'trackLevelComplete', 'trackLevelFail', 'trackLevelStart', 'trackRewardedAdResult', 'trackGameEvent'].map((key) => [key, noop]));
   analytics.flushAnalyticsQueue = asyncNoop;
   const styles = { create: (value) => value };
@@ -509,12 +672,12 @@ test('App guards duplicate wins and preserves board and Energy across capped rew
     './src/hooks/useSound': { preloadSounds: asyncNoop, setSoundEnabled: noop, setHapticsEnabled: noop },
     './src/hooks/useMusic': { preloadMusic: asyncNoop, playMusic: noop, setMusicEnabled: noop, pauseMusic: noop, resumeMusic: noop },
     './src/analytics/gameAnalytics': analytics, '../analytics/gameAnalytics': analytics,
-    './src/hooks/useRewardedAd': { useRewardedAd: () => ({ isLoaded: true, status: 'ready', showAd: (callback) => { adCalls++; pendingAd = callback; }, privacyOptionsRequired: false, openPrivacyOptions: asyncNoop }) },
+    './src/hooks/useRewardedAd': { useRewardedAd: () => ({ statuses: { continue: 'ready', energy: 'ready', clear_bonus: 'ready' }, busy: false, showAd: (placement, callback) => { adCalls++; pendingAd = callback; }, privacyOptionsRequired: false, openPrivacyOptions: asyncNoop }) },
     './src/hooks/usePlusPurchases': { usePlusPurchases: () => ({ busyPlanId: null, restoring: false, connected: false, storeMessage: null, storePlans: [], purchasePlan: noop, restorePurchases: noop }) },
     './src/hooks/useSaveData': { useSaveData: () => ({ loading: false, ready: true, saveError: null, retrySave: noop,
       unlockedUpTo: 0, levelStars: {}, levelHighScores: {}, totalBobas: 0, seenWorlds: [0, 1, 2, 3], soundEnabled: false,
       hapticsEnabled: false, adsRemoved: false, seenOnboarding: { app_intro: true }, energy, maxEnergy: 5, nextEnergyInMs: 0,
-      recordLevelComplete: () => { completionCalls++; return { firstClear: true, energyRefund: 0, badgeUnlocks: [] }; }, markWorldSeen: noop, markOnboardingSeen: noop, updateSettings: noop,
+      recordLevelComplete: () => { completionCalls++; return { firstClear: true, energyRefund: 0, badgeUnlocks: [], bobasEarned: 14, bonusClaimId: 'claim' }; }, claimClearBonus: () => { bonusClaims++; return { added: 14, badgeUnlocks: [] }; }, markWorldSeen: noop, markOnboardingSeen: noop, updateSettings: noop,
       setAdsRemovedEntitlement: noop, isLevelUnlocked: () => true, spendEnergy: () => { energy--; return true; }, addEnergy: () => true }) },
   };
   const App = loader(mocks, { setTimeout(fn, ms) { if (ms === 650) locks.push(fn); return 1; } })('App.tsx').default;
@@ -532,6 +695,14 @@ test('App guards duplicate wins and preserves board and Energy across capped rew
   const complete = renderer.root.findByType('GameScreen').props.onLevelComplete;
   await act(async () => { complete(100, 14, 3); complete(100, 14, 3); });
   assert.equal(completionCalls, 1);
+  const claim = renderer.root.findByType('LevelCompleteScreen').props.onClaimBonus;
+  await act(async () => { claim(); claim(); });
+  assert.equal(adCalls, 1); assert.equal(bonusClaims, 0);
+  await act(async () => pendingAd('closed')); assert.equal(bonusClaims, 0);
+  await act(async () => renderer.root.findByType('LevelCompleteScreen').props.onClaimBonus());
+  await act(async () => { pendingAd('watched'); pendingAd('watched'); });
+  assert.equal(bonusClaims, 1);
+  assert.equal(renderer.root.findByType('LevelCompleteScreen').props.bonusAvailable, false);
   await act(async () => renderer.root.findByType('LevelCompleteScreen').props.onMenu());
   locks.shift()();
   await act(async () => renderer.root.findByType('LevelSelectScreen').props.onSelectLevel(5));
@@ -553,7 +724,7 @@ test('App guards duplicate wins and preserves board and Energy across capped rew
   }
   assert.equal(renderer.root.findByType('GameOverScreen').props.continueOffer.canShow, false);
   await act(async () => renderer.root.findByType('GameOverScreen').props.onContinue());
-  assert.equal(adCalls, 3); // one skipped ad and two successful continues
+  assert.equal(adCalls, 5); // two bonus attempts, one skipped revive, and two successful revives
   await act(async () => renderer.unmount());
 });
 

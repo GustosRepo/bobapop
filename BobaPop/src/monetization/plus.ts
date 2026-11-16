@@ -1,4 +1,5 @@
 import type { ProductSubscription } from 'expo-iap';
+import { CONTINUE_LIVES } from './economy';
 
 export type PlusPlanId = 'bobapop_plus_yearly' | 'bobapop_plus_monthly';
 
@@ -32,7 +33,8 @@ export const PLUS_PLANS: PlusPlan[] = [
 
 export const PLUS_BENEFITS = [
   'Unlimited Energy',
-  'Ad-free continues (+2 lives)',
+  `Ad-free continues (+${CONTINUE_LIVES} lives)`,
+  'Double clear Bobas without ads (Level 4+)',
   'Supports new worlds',
 ];
 

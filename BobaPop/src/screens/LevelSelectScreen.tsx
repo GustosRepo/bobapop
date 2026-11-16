@@ -18,6 +18,7 @@ import { useReducedMotion } from '../hooks/useReducedMotion';
 import { WORLDS } from '../constants/themes';
 import { IMAGES } from '../assets/images';
 import { ENERGY_AD_REWARD } from '../monetization/economy';
+import { RewardedOfferButton } from '../components/RewardedOfferButton';
 import { BadgeRewards } from '../components/BadgeRewards';
 import { BadgeStyleId, getBadgeStyle } from '../game/badgeRewards';
 import { calculatePlayerLevel } from '../game/progression';
@@ -292,6 +293,12 @@ export const LevelSelectScreen: React.FC<Props> = ({
           <Text style={styles.subtitle} accessibilityLiveRegion="polite">
             {perfectLevels === LEVELS.length ? 'Every level perfected! Replay to beat your best scores.' : `${LEVELS.length - perfectLevels} levels left to earn three stars. Choose one below.`}
           </Text>
+        )}
+
+        {!plusActive && energy < maxEnergy && (
+          <RewardedOfferButton title={`Watch Ad · +${energyAdReward} Energy`}
+            detail={`Energy ${energy}/${maxEnergy} · Keep popping`}
+            ready={energyAdReady} loading={energyAdLoading} onPress={onWatchEnergyAd} />
         )}
 
         {/* ── World Sections ── */}

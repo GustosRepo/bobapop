@@ -15,7 +15,8 @@
     "preflight": "npm run typecheck && npm run check:levels && npm run check:save-migrations && npm test && npm audit --audit-level=moderate",
     "test": "node scripts/check-regressions.js",
     "check:release": "node scripts/check-release.js",
-    "check:asset-rights": "node scripts/check-asset-rights.js"
+    "check:asset-rights": "node scripts/check-asset-rights.js",
+    "check:ads": "node scripts/check-ad-setup.js"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",

@@ -28,15 +28,26 @@ if (IS_PRODUCTION_BUILD) {
     throw new Error('Production builds must disable release test ads. Use a preview build for test ads.');
   }
   for (const platform of EAS_BUILD_PLATFORM ? [EAS_BUILD_PLATFORM] : ['ios', 'android']) {
-    const unit = process.env[`EXPO_PUBLIC_ADMOB_REWARDED_${platform.toUpperCase()}_UNIT_ID`];
-    if (!/^ca-app-pub-\d+\/\d+$/.test(unit ?? '') || /3940256099942544|0000000000000000/.test(unit)) {
-      throw new Error(`Missing live rewarded ad unit ID for ${platform}.`);
+    for (const placement of ['CONTINUE', 'ENERGY', 'CLEAR_BONUS']) {
+      const unit = process.env[`EXPO_PUBLIC_ADMOB_${placement}_${platform.toUpperCase()}_UNIT_ID`]
+        || process.env[`EXPO_PUBLIC_ADMOB_REWARDED_${platform.toUpperCase()}_UNIT_ID`];
+      if (!/^ca-app-pub-\d+\/\d+$/.test(unit ?? '') || /3940256099942544|0000000000000000/.test(unit)) {
+        throw new Error(`Missing live rewarded ad unit ID for ${platform} ${placement.toLowerCase()}.`);
+      }
+      const appId = platform === 'ios' ? PROD_IOS_ADMOB_APP_ID : PROD_ANDROID_ADMOB_APP_ID;
+      if (unit.split('/')[0] !== appId.split('~')[0]) throw new Error(`AdMob publisher mismatch for ${platform} ${placement}.`);
     }
   }
 }
 
+for (const name of ['EXPO_PUBLIC_ENERGY_AD_REWARD', 'EXPO_PUBLIC_CONTINUE_AD_LIVES']) {
+  if (process.env[name] && !/^[1-3]$/.test(process.env[name])) throw new Error(`${name} must be 1, 2, or 3.`);
+}
+
 const GOOGLE_MOBILE_ADS_CONFIG = {
   delayAppMeasurementInit: true,
+  userTrackingUsageDescription: 'Your permission helps show relevant ads and supports free gameplay.',
+  skAdNetworkItems: require('./config/skadnetwork-ids.js'),
   androidAppId: PROD_ANDROID_ADMOB_APP_ID,
   iosAppId: PROD_IOS_ADMOB_APP_ID,
   android_app_id: PROD_ANDROID_ADMOB_APP_ID,

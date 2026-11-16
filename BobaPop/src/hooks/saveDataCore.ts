@@ -3,7 +3,7 @@
 //  Add a migration case below so old saves are upgraded rather than wiped.
 import { BADGE_STYLES, BadgeStyleId } from '../game/badgeRewards';
 
-export const CURRENT_VERSION = 10;
+export const CURRENT_VERSION = 11;
 export const STORAGE_KEY = '@bobapop_save_v1';   // key never changes; version lives inside the JSON
 export const BACKUP_STORAGE_KEY = '@bobapop_save_backup_v1';
 export const MAX_ENERGY = 5;
@@ -35,7 +35,8 @@ export interface SaveData {
   unlockedLevelIds: string[];
   levelStarsById: Record<string, number>;
   levelHighScoresById: Record<string, number>;
-  totalBobas: number;                      // lifetime brick pop count
+  totalBobas: number;                      // earned Bobas, including claimed clear bonuses
+  pendingClearBonus: { id: string; bobas: number } | null;
   selectedBadgeId: BadgeStyleId;
   seenWorlds: number[];                    // world indices whose intro has been shown
   soundEnabled: boolean;
@@ -57,6 +58,7 @@ export function buildDefaultSave(levelIds: string[], now = Date.now()): SaveData
     levelStarsById: {},
     levelHighScoresById: {},
     totalBobas: 0,
+    pendingClearBonus: null,
     selectedBadgeId: 'classic',
     seenWorlds: [],
     soundEnabled: true,
@@ -172,6 +174,7 @@ export function migrateSaveData(raw: Record<string, unknown>, levelIds: string[]
 
   if (data.version < 9) data = { ...data, plusExpiresAt: null, version: 9 };
   if (data.version < 10) data = { ...data, selectedBadgeId: 'classic', version: 10 };
+  if (data.version < 11) data = { ...data, pendingClearBonus: null, version: 11 };
 
   const unlockedLevelIds = Array.isArray(data.unlockedLevelIds)
     ? data.unlockedLevelIds.filter((id): id is string => typeof id === 'string' && levelIds.includes(id))
@@ -196,6 +199,10 @@ export function migrateSaveData(raw: Record<string, unknown>, levelIds: string[]
     levelStarsById,
     levelHighScoresById: numericRecord(data.levelHighScoresById),
     totalBobas: boundedInteger(data.totalBobas, 0),
+    pendingClearBonus: isRecord(data.pendingClearBonus) && typeof data.pendingClearBonus.id === 'string'
+      && data.pendingClearBonus.id.length > 0 && data.pendingClearBonus.id.length <= 100
+      && boundedInteger(data.pendingClearBonus.bobas, 0) > 0
+      ? { id: data.pendingClearBonus.id, bobas: boundedInteger(data.pendingClearBonus.bobas, 0, 1000) } : null,
     selectedBadgeId: BADGE_STYLES.some((badge) => badge.id === data.selectedBadgeId) ? data.selectedBadgeId : 'classic',
     seenWorlds: Array.isArray(data.seenWorlds)
       ? [...new Set(data.seenWorlds.filter((value) => Number.isInteger(value) && value >= 0 && value < 4))] : [],

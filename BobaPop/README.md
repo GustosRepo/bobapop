@@ -31,13 +31,15 @@ The `@expo/fingerprint` override selects patched `minimatch` 11.0.1 or newer. Ke
 
 ## Purchases and advertising
 
-Create `bobapop_plus_monthly` and `bobapop_plus_yearly` subscriptions in the stores. Prices come from the current store offer; unavailable products cannot be purchased. Plus provides unlimited Energy for starts and retries, plus ad-free continues. A free attempt costs one Energy and starts with three lives. The first clear of each level returns one Energy, capped at five; replays do not earn another refund. A rewarded Energy ad grants up to two Energy, capped at five.
+Create `bobapop_plus_monthly` and `bobapop_plus_yearly` subscriptions in the stores. Prices come from the current store offer; unavailable products cannot be purchased. Plus provides unlimited Energy for starts and retries, ad-free continues, and ad-free double-Boba claims on clears from Level 4. A free attempt costs one Energy and starts with three lives. The first clear of each level returns one Energy, capped at five; replays do not earn another refund. A rewarded Energy ad grants up to two Energy, capped at five.
+
+Use `npm run check:ads -- ios` or `-- android` to validate ad delivery values and report remaining optimization setup. Continue, Energy, and Clear Bonus each support their own unit IDs; the existing rewarded ID is the fallback. See [the monetization setup and tuning guide](docs/monetization.md).
 
 Set live AdMob application and rewarded unit IDs in the EAS production environment. Disable both release-test-ad flags. Development uses test ads automatically; preview builds can explicitly opt into them. Production configuration rejects missing, placeholder, or Google test IDs. Android IDs must come from the owner's AdMob account; they cannot be inferred from the iOS IDs.
 
 Configure applicable privacy messages in AdMob Privacy & messaging. The app delays ad measurement, gathers consent before requesting ads, and exposes required privacy choices in Settings. Verify the configured forms and audience settings on physical devices, including consent denial and consent-update failures. Privacy and Terms links must resolve to the owner's published policies.
 
-An optional HTTPS `EXPO_PUBLIC_ANALYTICS_ENDPOINT` receives individual events with unique IDs. Deduplicate IDs server-side because failed uploads can be retried. Without an endpoint, analytics is disabled. The error boundary reports render failures through the same transport when configured; native crash collection requires a separate service.
+An optional HTTPS `EXPO_PUBLIC_ANALYTICS_ENDPOINT` receives individual events with unique IDs, session IDs, and a locally generated installation ID for retention analysis. Ad telemetry covers placement offers, load failures, presentation, results, rewards, and impression revenue (including currency and precision). Deduplicate IDs server-side because failed uploads can be retried. Without an endpoint, analytics is disabled. The error boundary reports render failures through the same transport when configured; native crash collection requires a separate service.
 
 ## Release
 
@@ -64,8 +66,12 @@ Chapter 1 keeps the original 20 levels and their IDs. Chapter 2 adds levels 21�
 
 Continues preserve the current board and score. Levels 1–3 have no continues, levels 4–5 allow one, and levels 6–40 allow two per run. Each continue grants two lives with no added countdown. Free players opt into an ad; Plus players continue without ads. A skipped or failed ad does not consume a continue. Three lives plus two continues give at most seven lives per run. Perfect three-star clears still require finishing without a continue.
 
+From Level 4, the clear screen offers one optional ad to double Bobas earned in that clear. Plus claims the same bonus without an ad. Each claim is backed by a persisted receipt, invalidated after claim or a newer clear. Energy refills are also offered on the level menu, game-over screen, and clear screen whenever Energy is below five, with exact capped rewards shown.
+
+Reward defaults remain two Energy and two continue lives. Build-time `EXPO_PUBLIC_ENERGY_AD_REWARD` and `EXPO_PUBLIC_CONTINUE_AD_LIVES` accept 1–3, and every analytics event includes the effective reward policy. Continue limits and first-clear refunds remain unchanged.
+
 Stars advance player ranks. Bobas are banked when a level is cleared and are never spent. Profile badge styles unlock at 100 bobas (Caramel), 500 bobas (Jade), 30 stars (Taro), 60 stars (Pearl), and 120 stars (Cosmic). Equip an unlocked style in the player statistics panel. These styles change appearance only.
 
 ## Progress storage
 
-Save version 10 preserves the original storage key and migrates older progress. Writes are serialized and maintain a recent backup. Entitlement updates arriving during loading merge into the loaded save. Badge selection migrates from older saves to Classic; existing stars and bobas immediately qualify for their earned styles. Invalid fields are repaired; a future-version save or unreadable primary with no valid backup is kept intact and offers Retry. Never clear user storage as an upgrade step.
+Save version 11 preserves the original storage key and migrates older progress. Writes are serialized and maintain a recent backup. Entitlement updates arriving during loading merge into the loaded save. Badge selection migrates from older saves to Classic; existing stars and bobas immediately qualify for their earned styles. Invalid fields are repaired; a future-version save or unreadable primary with no valid backup is kept intact and offers Retry. Never clear user storage as an upgrade step.
