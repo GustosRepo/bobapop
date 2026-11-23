@@ -371,11 +371,19 @@ test('expanded campaign preserves ranks and resolves themes from actual level me
   assert.equal(getWorldForLevel(39).id, 'thai_tea');
 });
 
+test('menu content balances side insets when there is room and preserves width when there is not', () => {
+  const { balanceHorizontalInsets } = load('src/utils/safeArea.ts');
+  assert.deepEqual({ ...balanceHorizontalInsets(468, { left: 0, right: 84 }, 280) }, { left: 84, right: 84 });
+  assert.deepEqual({ ...balanceHorizontalInsets(360, { left: 0, right: 84 }, 260) }, { left: 16, right: 84 });
+  assert.deepEqual({ ...balanceHorizontalInsets(300, { left: 84, right: 0 }, 260) }, { left: 84, right: 0 });
+});
+
 test('resizable boards preserve proportions and map touches inside asymmetric safe areas', () => {
   const { fitGameViewport, paddleXFromWindow } = load('src/game/viewport.ts');
-  for (const [width, height] of [[320,568], [440,620], [955,674], [674,955], [568,320], [320,320]]) {
+  for (const [width, height, sidePanel] of [[320,568,false], [440,620,false], [955,674,true], [674,955,false], [568,320,true], [320,320,false]]) {
     const insets = { top: 24, right: 64, bottom: 20, left: 8 };
     const v = fitGameViewport(width, height, insets);
+    assert.equal(v.hudBesideBoard, sidePanel);
     assert(v.left >= insets.left && v.top >= insets.top);
     assert(v.left + v.width <= width - insets.right + 0.001);
     assert(v.top + v.height <= height - insets.bottom + 0.001);
@@ -385,8 +393,19 @@ test('resizable boards preserve proportions and map touches inside asymmetric sa
     }
     assert.equal(paddleXFromWindow(-100, 37, v), 0);
     assert.equal(paddleXFromWindow(5000, 37, v), 390);
-    if (v.hudBesideBoard) assert(v.hudLeft + v.hudWidth <= v.left);
+    if (v.hudBesideBoard) {
+      assert(v.hudLeft >= insets.left);
+      assert(Math.abs(v.left - v.hudLeft - v.hudWidth - 16) < 0.001);
+      assert(v.hudTop > v.top && v.hudTop <= v.top + 24);
+      assert(v.hudWidth <= 176);
+      assert(Math.abs(v.height - (height - insets.top - insets.bottom)) < 0.001);
+    } else {
+      assert.equal(v.hudLeft, v.left);
+      assert.equal(v.hudWidth, v.width);
+    }
   }
+  const wide = fitGameViewport(955, 674, { top: 24, right: 64, bottom: 20, left: 8 });
+  assert(Math.abs((wide.hudLeft + wide.left + wide.width) / 2 - 955 / 2) < 0.001);
   assert.equal(paddleXFromWindow(0, 0, fitGameViewport(0, 0, {top:0,right:0,bottom:0,left:0})), 195);
 });
 
@@ -438,6 +457,7 @@ test('fold-like resize pauses the existing run, preserves its board, and updates
   assert.equal(canvas.props.state.bricks, originalBoard);
   const pause = renderer.root.findAllByType('Modal').find(n => n.props.visible);
   assert(pause);
+  assert(pause.props.supportedOrientations.includes('landscape'));
   // A changed horizontal reserved area also pauses without resetting progress.
   insets = { ...insets, left: 70, right: 0 };
   await act(async () => renderer.update(React.createElement(GameScreen, props)));

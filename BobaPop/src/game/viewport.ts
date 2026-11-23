@@ -6,23 +6,26 @@ export interface ViewInsets { top: number; right: number; bottom: number; left: 
 export function fitGameViewport(width: number, height: number, insets: ViewInsets) {
   const availableWidth = Math.max(0, width - insets.left - insets.right);
   const availableHeight = Math.max(0, height - insets.top - insets.bottom);
-  // Give controls their own column when a wide window would make the board too short.
-  const hudBesideBoard = availableWidth >= 300 && availableWidth / Math.max(1, availableHeight) >= 0.85;
-  const controlWidth = hudBesideBoard ? Math.min(240, availableWidth * 0.38) : 0;
-  const boardSpace = availableWidth - controlWidth;
+  const hudBesideBoard = availableWidth >= 400 && availableHeight >= 240 && availableWidth / availableHeight >= 0.85;
+  const panelWidth = hudBesideBoard ? Math.min(176, availableWidth * 0.34) : 0;
+  const panelGap = hudBesideBoard ? 16 : 0;
+  const boardSpace = availableWidth - panelWidth - panelGap;
   const scale = Math.min(boardSpace / GAME_WIDTH, availableHeight / GAME_HEIGHT);
-  const left = insets.left + controlWidth + (boardSpace - GAME_WIDTH * scale) / 2;
+  const boardWidth = GAME_WIDTH * scale;
+  const groupWidth = panelWidth + panelGap + boardWidth;
+  const groupLeft = Math.max(insets.left, Math.min((width - groupWidth) / 2, insets.left + availableWidth - groupWidth));
+  const left = groupLeft + panelWidth + panelGap;
   const top = insets.top + (availableHeight - GAME_HEIGHT * scale) / 2;
   return {
     left,
     top,
-    width: GAME_WIDTH * scale,
+    width: boardWidth,
     height: GAME_HEIGHT * scale,
     scale,
     hudBesideBoard,
-    hudLeft: hudBesideBoard ? insets.left : left,
-    hudTop: hudBesideBoard ? insets.top + 16 : top,
-    hudWidth: hudBesideBoard ? controlWidth : GAME_WIDTH * scale,
+    hudLeft: groupLeft,
+    hudTop: hudBesideBoard ? top + Math.min(24, availableHeight * 0.04) : top,
+    hudWidth: hudBesideBoard ? panelWidth : boardWidth,
   };
 }
 

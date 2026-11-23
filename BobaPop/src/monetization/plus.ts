@@ -38,8 +38,8 @@ export const PLUS_BENEFITS = [
   'Supports new worlds',
 ];
 
-export const PRIVACY_POLICY_URL = 'https://codewerx.com/privacy';
-export const TERMS_URL = 'https://codewerx.com/terms';
+export const PRIVACY_POLICY_URL = 'https://www.code-werx.com/bobapop-privacy';
+export const TERMS_URL = 'https://www.code-werx.com/bobapop-terms';
 
 export function buildStorePlans(products: ProductSubscription[]): PlusPlan[] {
   const prices = new Map<string, { amount: number; currency: string }>();

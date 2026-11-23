@@ -130,7 +130,7 @@ export const SettingsModal: React.FC<Props> = ({
                 <Text style={styles.sectionLabel}>About</Text>
                 <TouchableOpacity accessibilityRole="button"
                   style={styles.creditRow}
-                  onPress={() => openExternalLink('https://codewerx.com')}
+                  onPress={() => openExternalLink('https://www.code-werx.com/')}
                   activeOpacity={0.7}
                 >
                   <Text style={styles.creditText}>Made by CODEWERX LLC</Text>

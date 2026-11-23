@@ -31,7 +31,7 @@ This checks local values, not EAS or AdMob account state. Warnings identify shar
 
 In AdMob, enable [impression-level ad revenue](https://developers.google.com/admob/ios/impression-level-ad-revenue). Configure GDPR, applicable US-state privacy messages, and the IDFA explainer/ATT message under Privacy & messaging. UMP handles the configured consent and ATT flow. The app checks `canRequestAds` before initializing/loading and lets the SDK use the stored privacy choices to choose its serving mode. `canRequestAds` is not interpreted as permission to personalize. The Expo plugin includes the ATT usage description and Google's current SKAdNetwork buyer identifiers; native binaries must be rebuilt for these settings to take effect.
 
-The prepared [app-ads.txt](../public/app-ads.txt) contains the publisher from the existing live iOS configuration. Publish or merge it at the root of the developer website used in the app store listing; placing it in this repository does not publish it on codewerx.com. Preserve existing sellers and add each mediated network's required entries. Verify the status in AdMob using [Google's setup instructions](https://support.google.com/admob/answer/9363762?hl=en).
+The [live app-ads.txt](https://www.code-werx.com/app-ads.txt) includes the publisher from the [repository copy](../public/app-ads.txt). The non-`www` URL redirects to the live file. Use `https://www.code-werx.com/` as the developer website in the store listing, and verify the crawler status in AdMob. Preserve existing sellers and add each mediated network's required entries. [Google's setup instructions](https://support.google.com/admob/answer/9363762?hl=en)
 
 ## Mediation
 

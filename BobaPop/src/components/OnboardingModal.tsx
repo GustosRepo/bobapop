@@ -16,6 +16,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { IMAGES } from '../assets/images';
+import { balanceHorizontalInsets } from '../utils/safeArea';
+import { CONTINUE_POLICY } from '../monetization/continueSystem';
+import { ENERGY_AD_REWARD, FIRST_CLEAR_ENERGY_REFUND, INITIAL_LIVES } from '../monetization/economy';
 
 interface Props {
   visible: boolean;
@@ -69,7 +72,7 @@ const SLIDES: Slide[] = [
   {
     eyebrow: 'Energy',
     title: 'Fresh tries refill',
-    body: 'Each try starts with 3 lives. First clears return 1 Energy. Watch an ad for +2 Energy or a +2-life continue from Level 4.',
+    body: `Start with ${INITIAL_LIVES} lives. First clears return ${FIRST_CLEAR_ENERGY_REFUND} Energy. Watch an ad for up to ${ENERGY_AD_REWARD} Energy or a +${CONTINUE_POLICY.rewardLives}-life continue from Level ${CONTINUE_POLICY.noAdsThroughLevel + 1}.`,
     art: IMAGES.effectBurst,
     accent: '#B85B16',
     supportingArt: IMAGES.mascotExcited,
@@ -79,6 +82,7 @@ const SLIDES: Slide[] = [
 export const OnboardingModal: React.FC<Props> = ({ visible, onDone }) => {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const contentInsets = balanceHorizontalInsets(width, insets, 308);
   const reducedMotion = useReducedMotion();
   const [index, setIndex] = useState(0);
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -112,7 +116,7 @@ export const OnboardingModal: React.FC<Props> = ({ visible, onDone }) => {
 
   return (
     <Modal visible={visible} transparent animationType={reducedMotion ? "none" : "fade"} statusBarTranslucent onRequestClose={onDone}>
-      <View style={[styles.root, { paddingLeft: insets.left + 24, paddingRight: insets.right + 24 }]}>
+      <View style={[styles.root, { paddingLeft: contentInsets.left + 24, paddingRight: contentInsets.right + 24 }]}>
         <LinearGradient
           colors={['#2A0F05', '#7A421C', '#F2BE68']}
           style={StyleSheet.absoluteFill}
@@ -136,7 +140,7 @@ export const OnboardingModal: React.FC<Props> = ({ visible, onDone }) => {
             <Text style={[styles.eyebrow, { color: slide.accent }]}>{slide.eyebrow}</Text>
           </View>
 
-          <View style={[styles.artStage, { width: Math.max(0, Math.min(310, width - insets.left - insets.right - 60)), height: Math.min(280, height * 0.32) }]}>
+          <View style={[styles.artStage, { height: Math.min(280, height * 0.32) }]}>
             <View style={[styles.artGlow, { backgroundColor: slide.accent }]} />
             {slide.supportingArt && (
               <Image source={slide.supportingArt} style={styles.supportingArt} resizeMode="contain" />
@@ -185,9 +189,6 @@ const styles = StyleSheet.create({
   root: {
     width: '100%',
     height: '100%',
-    paddingTop: 0,
-    paddingHorizontal: 24,
-    paddingBottom: 0,
   },
   bgImage: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
@@ -228,8 +229,8 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   artStage: {
-    width: 310,
-    height: 280,
+    width: '100%',
+    maxWidth: 310,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 18,

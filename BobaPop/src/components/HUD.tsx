@@ -38,26 +38,32 @@ export const HUD: React.FC<Props> = ({
   stacked = false,
   onPause,
 }) => {
+  const scoreText = score.toLocaleString();
+  const containerStyle = stacked
+    ? [styles.panel, { backgroundColor: theme.background[0], borderColor: `${theme.accentColor}66` }]
+    : [styles.container, compact && styles.compactContainer];
 
   return (
-    <View style={[styles.container, compact && styles.compactContainer]}>
-      <View style={[styles.topRow, stacked && { flexDirection: 'column', gap: 16 }]}>
-        <View style={{ flex: stacked ? undefined : 1, minWidth: 0 }}>
-          <Text numberOfLines={1} style={[styles.worldName, { color: theme.accentColor }]}>{worldName}</Text>
-          <Text style={[styles.levelText, compact && { fontSize: 16 }, { color: theme.ballColor }]}>Level {level}</Text>
-          {!compact && levelName && <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '700', color: theme.ballColor }}>{levelName}</Text>}
+    <View style={containerStyle} pointerEvents="box-none">
+      <View style={stacked ? styles.panelStats : styles.topRow} pointerEvents="box-none">
+        <View style={!stacked && [styles.levelBlock, compact && styles.compactLevelBlock]}>
+          <Text numberOfLines={1} style={[styles.worldName, compact && styles.compactWorldName, { color: theme.ballColor }]}>{worldName}</Text>
+          <Text numberOfLines={1} style={[styles.levelText, compact && !stacked && styles.compactLevelText, { color: theme.ballColor }]}>Level {level}</Text>
+          {(stacked || !compact) && levelName && <Text numberOfLines={1} style={[styles.levelName, { color: theme.ballColor }]}>{levelName}</Text>}
         </View>
-        <View style={[styles.scoreBlock, stacked && { flex: 0 }]}>
-          <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.score, compact && { fontSize: 18 }, { color: theme.ballColor }]}>{score.toLocaleString()}</Text>
+        <View style={stacked ? styles.panelScoreBlock : [styles.scoreBlock, compact && styles.compactScoreBlock]} accessible accessibilityLabel={`Score ${scoreText}`}>
+          {stacked && <Text style={styles.scoreLabel}>Score</Text>}
+          <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.score, compact && styles.compactScore, stacked && styles.panelScore, { color: theme.ballColor }]}>{scoreText}</Text>
         </View>
-        <View style={styles.rightBlock}>
-          <View style={styles.livesRow}>
+        <View style={[styles.livesRow, stacked && styles.panelLivesRow]} pointerEvents="box-none">
+          <View style={styles.livesRow} accessible accessibilityLabel={`${lives} lives`}>
             <Image source={IMAGES.lifeIcon} style={styles.lifeIcon} resizeMode="contain" />
-            <Text accessibilityLabel={`${lives} lives`} style={{ color: theme.ballColor, fontSize: compact ? 16 : 18, fontWeight: '800' }}>×{lives}</Text>
-            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Pause game" onPress={onPause} style={styles.pauseBtn}>
-              <Image source={IMAGES.pauseBtn} style={styles.pauseIcon} resizeMode="contain" />
-            </TouchableOpacity>
+            <Text style={{ color: theme.ballColor, fontSize: compact ? 16 : 18, fontWeight: '800' }}>×{lives}</Text>
           </View>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Pause game" onPress={onPause}
+            style={[styles.pauseBtn, stacked && [styles.panelPauseBtn, { backgroundColor: `${theme.accentColor}26` }]]}>
+            <Image source={IMAGES.pauseBtn} style={styles.pauseIcon} resizeMode="contain" />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -88,8 +94,7 @@ export const HUD: React.FC<Props> = ({
         </View>
       )}
 
-      {/* Always reserve space for power-ups row */}
-      <View style={styles.powerUpsRow}>
+      {(!stacked || activePowerUps.length > 0) && <View style={[styles.powerUpsRow, stacked && styles.panelPowerUpsRow]}>
         {activePowerUps.map((p) => {
           return (
             <View key={p.type} style={[styles.powerUpTag, { borderColor: theme.accentColor }]}>
@@ -97,7 +102,7 @@ export const HUD: React.FC<Props> = ({
             </View>
           );
         })}
-      </View>
+      </View>}
     </View>
   );
 };
@@ -109,11 +114,20 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   compactContainer: { paddingHorizontal: 8, paddingTop: 6, paddingBottom: 4 },
+  panel: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderRadius: 16,
+  },
+  panelStats: { gap: 10 },
   topRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  levelBlock: { flex: 1, minWidth: 0 },
+  compactLevelBlock: { flex: 1.55 },
   worldName: {
     fontSize: 11,
     fontWeight: '600',
@@ -121,29 +135,47 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     opacity: 0.8,
   },
+  compactWorldName: { letterSpacing: 0.5 },
   levelText: {
     fontSize: 20,
     fontWeight: '700',
   },
+  compactLevelText: { fontSize: 16 },
+  levelName: { fontSize: 11, fontWeight: '700' },
   scoreBlock: {
     flex: 1,
     minWidth: 0,
     paddingHorizontal: 6,
     alignItems: 'center',
   },
+  compactScoreBlock: { flex: 0.65, paddingHorizontal: 4 },
   score: {
     fontSize: 24,
     fontWeight: '800',
     letterSpacing: 1,
+    fontVariant: ['tabular-nums'],
   },
-  rightBlock: {
-    alignItems: 'flex-end',
+  compactScore: { fontSize: 18 },
+  panelScoreBlock: {
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.13)',
+  },
+  scoreLabel: {
+    color: 'rgba(255,255,255,0.73)',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  panelScore: {
+    fontSize: 30,
+    letterSpacing: 0,
   },
   livesRow: {
     flexDirection: 'row',
     gap: 6,
     alignItems: 'center',
   },
+  panelLivesRow: { justifyContent: 'space-between', gap: 4 },
   lifeIcon: {
     width: 28,
     height: 28,
@@ -155,6 +187,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginLeft: 4,
   },
+  panelPauseBtn: { marginLeft: 0, borderRadius: 12 },
   pauseIcon: {
     width: 36,
     height: 36,
@@ -166,6 +199,7 @@ const styles = StyleSheet.create({
     minHeight: 24,
     justifyContent: 'center',
   },
+  panelPowerUpsRow: { flexWrap: 'wrap', justifyContent: 'flex-start', gap: 5 },
   powerUpTag: {
     borderWidth: 1,
     borderRadius: 8,

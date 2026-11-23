@@ -23,6 +23,7 @@ import { HUD } from '../components/HUD';
 import { fitGameViewport, paddleXFromWindow } from '../game/viewport';
 import { LEVELS } from '../game/levels';
 import { GameState } from '../game/types';
+import { balanceHorizontalInsets } from '../utils/safeArea';
 
 interface Props {
   levelIndex: number;
@@ -61,6 +62,7 @@ export const GameScreen: React.FC<Props> = ({
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
   const viewport = fitGameViewport(size.width, size.height, insets);
+  const pauseInsets = balanceHorizontalInsets(size.width, insets, 300);
   const viewportRef = useRef(viewport);
   viewportRef.current = viewport;
   const onLayout = useCallback(({ nativeEvent: { layout } }: LayoutChangeEvent) => {
@@ -226,7 +228,7 @@ export const GameScreen: React.FC<Props> = ({
   return (
     <View ref={rootRef} onLayout={onLayout} style={styles.root}>
       <StatusBar hidden />
-      <Image source={worldTheme.bgImage} style={StyleSheet.absoluteFill} resizeMode="cover" blurRadius={18} />
+      <Image source={worldTheme.bgImage} style={styles.backgroundArt} resizeMode="cover" blurRadius={18} />
       <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(20,8,2,0.55)' }]} />
 
       {viewport.scale > 0 && <>
@@ -303,8 +305,14 @@ export const GameScreen: React.FC<Props> = ({
       </>}
 
       {/* Pause Modal */}
-      <Modal visible={gameState.phase === 'paused'} transparent animationType={reducedMotion ? "none" : "fade"} onRequestClose={resumeGame}>
-        <View style={[styles.overlay, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12, paddingLeft: insets.left + 16, paddingRight: insets.right + 16 }]}>
+      <Modal
+        visible={gameState.phase === 'paused'}
+        transparent
+        animationType={reducedMotion ? 'none' : 'fade'}
+        supportedOrientations={['portrait', 'portrait-upside-down', 'landscape']}
+        onRequestClose={resumeGame}
+      >
+        <View style={[styles.overlay, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12, paddingLeft: pauseInsets.left + 16, paddingRight: pauseInsets.right + 16 }]}>
           <ScrollView style={[styles.modal, { backgroundColor: worldTheme.background[1] }]} contentContainerStyle={styles.modalContent}>
             <Text style={[styles.modalTitle, { color: worldTheme.ballColor }]}>Paused</Text>
             <TouchableOpacity accessibilityRole="button"
@@ -348,6 +356,13 @@ const styles = StyleSheet.create({
 
     backgroundColor: '#2A0F05',
     overflow: 'hidden',
+  },
+  backgroundArt: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
   },
   canvasWrapper: {
     position: 'absolute',

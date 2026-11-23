@@ -16,8 +16,6 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 8,
     flexWrap: 'wrap',
     gap: 8,
     paddingBottom: 12,
@@ -127,6 +125,15 @@ export const styles = StyleSheet.create({
     width: 42,
     height: 42,
   },
+  compactTopBarButton: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+  },
+  compactSettingsIcon: {
+    width: 34,
+    height: 34,
+  },
   scroll: {
     width: '100%',
     maxWidth: 760,
@@ -141,6 +148,14 @@ export const styles = StyleSheet.create({
   mascot: {
     width: 180,
     height: 180,
+  },
+  compactMascotContainer: {
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  compactMascot: {
+    width: 132,
+    height: 132,
   },
   title: {
     fontSize: 56,
@@ -159,6 +174,9 @@ export const styles = StyleSheet.create({
     marginBottom: 28,
     letterSpacing: 1,
   },
+  compactSubtitle: {
+    marginBottom: 18,
+  },
   continueBtn: {
     width: '84%',
     paddingVertical: 18,
@@ -171,6 +189,10 @@ export const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 8,
     elevation: 8,
+  },
+  compactContinueBtn: {
+    paddingVertical: 16,
+    marginBottom: 20,
   },
   continueBtnText: {
     fontSize: 24,

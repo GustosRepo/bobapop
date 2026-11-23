@@ -10,6 +10,7 @@ import {
   Animated,
   TouchableOpacity,
   Modal,
+  useWindowDimensions,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -28,6 +29,7 @@ import { LevelWorldSection } from '../components/LevelWorldSection';
 import { FloatingBobas } from '../components/FloatingBobas';
 import { SettingsModal } from '../components/SettingsModal';
 import { useSound } from '../hooks/useSound';
+import { balanceHorizontalInsets } from '../utils/safeArea';
 
 interface Props {
   unlockedUpTo: number;
@@ -78,6 +80,11 @@ export const LevelSelectScreen: React.FC<Props> = ({
   onOpenPlus,
 }) => {
   const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
+  const compactTopBar = width - insets.left - insets.right < 390;
+  const compactHero = height < 720;
+  const topBarGutter = compactTopBar ? 12 : 20;
+  const menuInsets = balanceHorizontalInsets(width, insets, 280);
   const reducedMotion = useReducedMotion();
   const { playSound } = useSound();
   const [settingsVisible, setSettingsVisible] = useState(false);
@@ -193,9 +200,9 @@ export const LevelSelectScreen: React.FC<Props> = ({
       <StatusBar hidden />
 
       {/* ── Top Bar ── */}
-      <View style={[styles.topBar, { paddingTop: insets.top + 8, paddingLeft: insets.left + 20, paddingRight: insets.right + 20 }]}>
+      <View style={[styles.topBar, { paddingTop: insets.top + 8, paddingLeft: insets.left + topBarGutter, paddingRight: insets.right + topBarGutter }]}>
         {/* Player Level Badge */}
-        <TouchableOpacity accessibilityRole="button" accessibilityLabel="View player statistics" style={styles.playerBadge} activeOpacity={0.8} onPress={() => {
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="View player statistics" style={[styles.playerBadge, compactTopBar && styles.compactTopBarButton]} activeOpacity={0.8} onPress={() => {
           if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           playSound('level_tap');
           setStatsVisible(true);
@@ -240,32 +247,32 @@ export const LevelSelectScreen: React.FC<Props> = ({
         </View>
 
         {/* Settings Button */}
-        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open settings" style={styles.settingsBtn} onPress={() => {
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Open settings" style={[styles.settingsBtn, compactTopBar && styles.compactTopBarButton]} onPress={() => {
           if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           playSound('level_tap');
           setSettingsVisible(true);
         }}>
-          <Image source={IMAGES.settingsBtn} style={styles.settingsIcon} resizeMode="contain" />
+          <Image source={IMAGES.settingsBtn} style={[styles.settingsIcon, compactTopBar && styles.compactSettingsIcon]} resizeMode="contain" />
         </TouchableOpacity>
       </View>
 
       <ScrollView
-        style={{ marginLeft: insets.left, marginRight: insets.right }}
+        style={{ marginLeft: menuInsets.left, marginRight: menuInsets.right }}
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 40 }]}
         showsVerticalScrollIndicator={false}
       >
         {/* ── Big Mascot ── */}
-        <Animated.View style={[styles.mascotContainer, { transform: [{ scale: mascotScale }] }]}>
-          <Image source={IMAGES.mascotHappy} style={styles.mascot} resizeMode="contain" />
+        <Animated.View style={[styles.mascotContainer, compactHero && styles.compactMascotContainer, { transform: [{ scale: mascotScale }] }]}>
+          <Image source={IMAGES.mascotHappy} style={[styles.mascot, compactHero && styles.compactMascot]} resizeMode="contain" />
         </Animated.View>
 
         {/* ── Title ── */}
         <Text style={styles.title}>BobaPop</Text>
-        <Text style={styles.subtitle}>Pop, Slurp, Repeat!</Text>
+        <Text style={[styles.subtitle, compactHero && styles.compactSubtitle]}>Pop, Slurp, Repeat!</Text>
 
         {/* ── Continue Button ── */}
         <TouchableOpacity accessibilityRole="button"
-          style={[styles.continueBtn, { backgroundColor: nextWorld.accentColor }]}
+          style={[styles.continueBtn, compactHero && styles.compactContinueBtn, { backgroundColor: nextWorld.accentColor }]}
           onPress={() => {
             if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             playSound('level_tap');
